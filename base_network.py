@@ -96,6 +96,7 @@ class LSTMEncoder(GaussianEncoderBase):
 
     def forward(self, inputs):
         if len(inputs.size()) > 2:
+            assert False
             word_embed = torch.matmul(inputs, self.embed.weight)
         else:
             word_embed = self.embed(inputs)
