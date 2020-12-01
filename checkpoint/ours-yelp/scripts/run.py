@@ -54,7 +54,6 @@ def main(args):
     test_labels = train_labels
 
     save_path = '{}-{}'.format(args.save, args.data_name)
-    save_path = os.path.join(save_path, time.strftime("%Y%m%d-%H%M%S"))
     scripts_to_save = [
         'run.py', 'models/vae.py',
         'models/base_network.py', 'config.py']
@@ -65,8 +64,7 @@ def main(args):
     params["vae_params"]["vocab"] = vocab
     params["vae_params"]["device"] = device
 
-    trainerVAE = TrainerVAE(train_data, val_data, test_data, train_labels, val_labels, test_labels, save_path, logging, params["num_epochs"], params["log_interval"], params["warm_up"], 
-    params["kl_start"], params["vae_params"], params["lr_params"])
+    trainerVAE = TrainerVAE(train_data, val_data, test_data, train_labels, val_labels, test_labels, logging, 1000, 100, 10, 0.1, params["vae_params"], params["lr_params"])
 
     trainerVAE.fit()
     #

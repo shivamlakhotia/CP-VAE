@@ -1,0 +1,1 @@
+| epoch  1 |    10/ 3470 batches | 50007.30 ms/batch | loss 78.13 | vae_loss 77.51 | disent_loss 0.61 | recon 77.51 | kl 0.00

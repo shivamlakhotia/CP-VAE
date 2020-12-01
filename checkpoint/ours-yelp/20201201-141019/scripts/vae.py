@@ -140,8 +140,8 @@ class TrainerVAE:
         style_pred_loss = F.cross_entropy(style_logits, train_labels, reduction="none")
         style_pred_loss = style_pred_loss.view(-1, batch_size).sum(0)
 
-        total_dis_loss = content_rec_loss.mean() + style_pred_loss.mean() + self.vae.s_given_c.get_s_c_mi(s, c)
-        return total_dis_loss
+        # total_dis_loss = content_rec_loss.mean() + style_pred_loss.mean() + self.vae.s_given_c.get_s_c_mi(s, c)
+        return content_rec_loss.mean(), style_pred_loss.mean(), self.vae.s_given_c.get_s_c_mi(s, c)
 
     def train(self, epoch):
         self.vae.train()
@@ -174,11 +174,11 @@ class TrainerVAE:
             vae_rec_loss = vae_rec_loss.view(-1, batch_size).sum(0)
             vae_loss = vae_rec_loss + self.kl_weight * vae_kl
             vae_loss = vae_loss.mean()
-            disent_loss = self.compute_disentangle_loss(batch_data, batch_labels)
+            content_rec_loss, style_pred_loss, s_c_mi_loss = self.compute_disentangle_loss(batch_data, batch_labels)
             total_rec_loss += vae_rec_loss.sum().item()
             total_kl_loss += vae_kl.sum().item()
-            total_disent_loss += disent_loss.item()
-            loss = vae_loss + disent_loss
+            total_disent_loss += content_rec_loss.item() + style_pred_loss.item() + s_c_mi_loss.item()
+            loss = vae_loss + content_rec_loss + style_pred_loss + s_c_mi_loss
 
             loss.backward()
 
@@ -186,12 +186,12 @@ class TrainerVAE:
 
             self.step_gradients()
 
-            # if content_rec_loss.item() <= 0:
-            #     print("content_rec_loss ----------- Negative")
-            # if style_pred_loss.item() <= 0:
-            #     print("style_pred_loss ------------ Negative")
-            # if s_c_mi_loss.item() <= 0:
-            #     print("s_c_mi_loss     ------------ Negative")
+            if content_rec_loss.item() <= 0:
+                print("content_rec_loss ----------- Negative")
+            if style_pred_loss.item() <= 0:
+                print("style_pred_loss ------------ Negative")
+            if s_c_mi_loss.item() <= 0:
+                print("s_c_mi_loss     ------------ Negative")
 
             if step % self.log_interval == 0 and step > 0:
                 cur_rec_loss = total_rec_loss / num_sents
@@ -237,8 +237,8 @@ class TrainerVAE:
                 total_rec_loss += vae_rec_loss.sum().item()
                 total_kl_loss += vae_kl.sum().item()
 
-                disent_loss = self.compute_disentangle_loss(batch_data, batch_labels)
-                total_disent_loss += disent_loss.item()
+                content_rec_loss, style_pred_loss, s_c_mi_loss = self.compute_disentangle_loss(batch_data, batch_labels)
+                total_disent_loss += content_rec_loss.item() + style_pred_loss.item() + s_c_mi_loss.item()
 
         cur_rec_loss = total_rec_loss / num_sents
         cur_kl_loss = total_kl_loss / num_sents
@@ -252,13 +252,13 @@ class TrainerVAE:
         for epoch in range(1, self.num_epochs + 1):
             epoch_start_time = time.time()
             self.train(epoch)
-            # val_losses = self.evaluate()
+            val_losses = self.evaluate()
     
-            # vae_loss = val_losses[0] + val_losses[3]
+            vae_loss = val_losses[0] + val_losses[3]
     
-            # if vae_loss < best_loss:
-            #     self.save(self.save_path)
-            #     best_loss = vae_loss
+            if vae_loss < best_loss:
+                self.save(self.save_path)
+                best_loss = vae_loss
             
 
             # if vae_loss > self.opt_dict["best_loss"]:

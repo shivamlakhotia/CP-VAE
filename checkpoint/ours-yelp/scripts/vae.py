@@ -49,14 +49,13 @@ class VAE(nn.Module):
 
 
 class TrainerVAE:
-    def __init__(self, train, valid, test, train_labels, valid_labels, test_labels, save_path, logging, num_epochs, log_interval,
+    def __init__(self, train, valid, test, train_labels, valid_labels, test_labels, logging, num_epochs, log_interval,
                  warm_up, kl_start,
                  vae_params, lr_params):
         super(TrainerVAE, self).__init__()
 
         self.use_cuda = torch.cuda.is_available()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.save_path = save_path
 
         self.train_data = train
         self.valid_data = valid
@@ -174,24 +173,17 @@ class TrainerVAE:
             vae_rec_loss = vae_rec_loss.view(-1, batch_size).sum(0)
             vae_loss = vae_rec_loss + self.kl_weight * vae_kl
             vae_loss = vae_loss.mean()
-            disent_loss = self.compute_disentangle_loss(batch_data, batch_labels)
+            disentangle_loss = self.compute_disentangle_loss(batch_data, batch_labels)
             total_rec_loss += vae_rec_loss.sum().item()
             total_kl_loss += vae_kl.sum().item()
-            total_disent_loss += disent_loss.item()
-            loss = vae_loss + disent_loss
+            total_disent_loss += disentangle_loss.item()
+            loss = vae_loss + disentangle_loss
 
             loss.backward()
 
             nn.utils.clip_grad_norm_(self.vae.parameters(), 5.0)
 
             self.step_gradients()
-
-            # if content_rec_loss.item() <= 0:
-            #     print("content_rec_loss ----------- Negative")
-            # if style_pred_loss.item() <= 0:
-            #     print("style_pred_loss ------------ Negative")
-            # if s_c_mi_loss.item() <= 0:
-            #     print("s_c_mi_loss     ------------ Negative")
 
             if step % self.log_interval == 0 and step > 0:
                 cur_rec_loss = total_rec_loss / num_sents
@@ -201,7 +193,7 @@ class TrainerVAE:
                 cur_total_loss = cur_vae_loss + cur_disent_loss
                 elapsed = time.time() - start_time
                 self.logging(
-                    '| epoch {:2d} | {:5d}/{:5d} batches | {:5.2f} ms/batch | loss {:3.2f} | vae_loss {:3.2f} | disent_loss {:3.2f} | '
+                    '| epoch {:2d} | {:5d}/{:5d} batches | {:5.2f} ms/batch | loss {:3.2f} | vae_loss {:3.2f} | disent_loss {:3.2f}'
                     'recon {:3.2f} | kl {:3.2f}'.format(
                         epoch, step, self.nbatch, elapsed * 1000 / self.log_interval, cur_total_loss, cur_vae_loss, cur_disent_loss,
                         cur_rec_loss, cur_kl_loss))
@@ -213,38 +205,37 @@ class TrainerVAE:
                 start_time = time.time()
             step += 1
 
-    def evaluate(self):
-        self.vae.eval()
+    # def evaluate(self, eval_data):
+    #     self.vae.eval()
 
-        total_rec_loss = 0
-        total_kl_loss = 0
-        total_disent_loss = 0
-        num_sents = 0
-        num_words = 0
+    #     total_rec_loss = 0
+    #     total_kl_loss = 0
+    #     total_mi = 0
+    #     num_sents = 0
+    #     num_words = 0
 
-        with torch.no_grad():
-            for idx, batch_data in enumerate(self.valid_data):
-                sent_len, batch_size = batch_data.size()
-                target = batch_data[1:]
-                batch_labels = torch.tensor(self.valid_labels[idx])
+    #     with torch.no_grad():
+    #         for batch_data in eval_data:
+    #             sent_len, batch_size = batch_data.size()
+    #             target = batch_data[1:]
 
-                num_sents += batch_size
-                num_words += (sent_len - 1) * batch_size
+    #             num_sents += batch_size
+    #             num_words += (sent_len - 1) * batch_size
 
-                vae_logits, vae_kl = self.vae.loss(batch_data)
-                vae_logits = vae_logits.view(-1, vae_logits.size(2))
-                vae_rec_loss = F.cross_entropy(vae_logits, target.view(-1), reduction="none")
-                total_rec_loss += vae_rec_loss.sum().item()
-                total_kl_loss += vae_kl.sum().item()
+    #             vae_logits, vae_kl = self.vae.loss(batch_data)
+    #             vae_logits = vae_logits.view(-1, vae_logits.size(2))
+    #             vae_rec_loss = F.cross_entropy(vae_logits, target.view(-1), reduction="none")
+    #             total_rec_loss += vae_rec_loss.sum().item()
+    #             total_kl_loss += vae_kl.sum().item()
 
-                disent_loss = self.compute_disentangle_loss(batch_data, batch_labels)
-                total_disent_loss += disent_loss.item()
+    #             mi = self.vae.calc_mi_q(batch_data)
+    #             total_mi += mi * batch_size
 
-        cur_rec_loss = total_rec_loss / num_sents
-        cur_kl_loss = total_kl_loss / num_sents
-        cur_vae_loss = cur_rec_loss + cur_kl_loss
-        cur_disent_loss = total_disent_loss / num_sents
-        return cur_vae_loss, cur_rec_loss, cur_kl_loss, cur_disent_loss
+    #     cur_rec_loss = total_rec_loss / num_sents
+    #     cur_kl_loss = total_kl_loss / num_sents
+    #     cur_vae_loss = cur_rec_loss + cur_kl_loss
+    #     cur_mi = total_mi / num_sents
+    #     return cur_vae_loss, cur_rec_loss, cur_kl_loss, cur_mi
 
     def fit(self):
         best_loss = 1e4
@@ -252,9 +243,9 @@ class TrainerVAE:
         for epoch in range(1, self.num_epochs + 1):
             epoch_start_time = time.time()
             self.train(epoch)
-            # val_losses = self.evaluate()
+            # val_loss = self.evaluate(self.valid_data)
     
-            # vae_loss = val_losses[0] + val_losses[3]
+            # vae_loss = val_loss[1]
     
             # if vae_loss < best_loss:
             #     self.save(self.save_path)
@@ -278,14 +269,14 @@ class TrainerVAE:
             # if decay_cnt == 5:
             #     break
 
-            self.logging('-' * 75)
+            # self.logging('-' * 75)
             # self.logging('| end of epoch {:2d} | time {:5.2f}s | '
             #              'kl_weight {:.2f} | vae_lr {:.2f} | loss {:3.2f}'.format(
             #                  epoch, (time.time() - epoch_start_time),
-            #                  self.kl_weight, self.opt_dict["lr"], val_losses[0]))
-            self.logging('| total_loss {:3.2f} | recon {:3.2f} | kl {:3.2f} | dient {:3.2f}'.format(
-                val_losses[0], val_losses[1], val_losses[2], val_losses[3]))
-            self.logging('-' * 75)
+            #                  self.kl_weight, self.opt_dict["lr"], val_loss[0]))
+            # self.logging('| recon {:3.2f} | kl {:3.2f} | mi {:3.2f}'.format(
+            #     val_loss[1], val_loss[2], val_loss[3]))
+            # self.logging('-' * 75)
         
         return best_loss
 
