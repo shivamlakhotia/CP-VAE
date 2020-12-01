@@ -7,42 +7,68 @@ import time
 import config
 # from models.decomposed_vae import DecomposedVAE
 import numpy as np
-from file_io import load_sent
+from file_io import *
 from vocab import Vocabulary, build_vocab
+from models.vae import TrainerVAE
 
 def main(args):
-    if args.train:
-        train0 = load_sent(args.train + '.0')
-        train1 = load_sent(args.train + '.1')
-        print('#sents of training file 0:', len(train0))
-        print('#sents of training file 1:', len(train1))
-
-        if not os.path.isfile(args.vocab):
-            build_vocab(train0 + train1, args.vocab)
-
-    vocab = Vocabulary(args.vocab, args.embedding, args.dim_emb)
-    print('vocabulary size:', vocab.size)
-
-    if args.dev:
-        dev0 = load_sent(args.dev + '.0')
-        dev1 = load_sent(args.dev + '.1')
-
-    if args.test:
-        test0 = load_sent(args.test + '.0')
-        test1 = load_sent(args.test + '.1')
-    print("Positive dataset size:", len(train0) + len(dev0) + len(test0))
-    print("Negative dataset size:", len(train1) + len(dev1) + len(test1))
+    # if args.train:
+    #     train0 = load_sent(args.train + '.0')
+    #     train1 = load_sent(args.train + '.1')
+    #     print('#sents of training file 0:', len(train0))
+    #     print('#sents of training file 1:', len(train1))
+    #
+    #     if not os.path.isfile(args.vocab):
+    #         build_vocab(train0 + train1, args.vocab)
+    #
+    # vocab = Vocabulary(args.vocab, args.embedding, args.dim_emb)
+    # print('vocabulary size:', vocab.size)
+    #
+    # if args.dev:
+    #     dev0 = load_sent(args.dev + '.0')
+    #     dev1 = load_sent(args.dev + '.1')
+    #
+    # if args.test:
+    #     test0 = load_sent(args.test + '.0')
+    #     test1 = load_sent(args.test + '.1')
+    # print("Positive dataset size:", len(train0) + len(dev0) + len(test0))
+    # print("Negative dataset size:", len(train1) + len(dev1) + len(test1))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    conf = config.CONFIG[args.data_name] # Need to update !!
+    data_pth = "data/%s" % args.data_name
+    train_data_pth0 = os.path.join(data_pth, "sentiment.train.0")
+    train_data_pth1 = os.path.join(data_pth, "sentiment.train.1")
+    train_class = MonoTextData(train_data_pth0, train_data_pth1, glove=True)
 
+    train_data, train_labels = train_class.create_data_batch_labels(args.bsz, device)
 
-    # conf = config.CONFIG[args.data_name] # Need to update !!
-    # data_pth = "data/%s" % args.data_name
-    # train_data_pth = os.path.join(data_pth, "train_data.txt")
-    # train_feat_pth = os.path.join(data_pth, "train_%s.npy" % args.feat)
-    # train_data = MonoTextData(train_data_pth, True)
-    # train_feat = np.load(train_feat_pth)
+    vocab = train_class.vocab
+    print('Vocabulary size: %d' % len(vocab))
+
+    #TODO: Val/Test Data Creation !
+    val_data = train_data
+    val_labels = train_labels
+    test_data = train_data
+    test_labels = train_labels
+
+    save_path = '{}-{}'.format(args.save, args.data_name)
+    scripts_to_save = [
+        'run.py', 'models/vae.py',
+        'models/base_network.py', 'config.py']
+    logging = create_exp_dir(save_path, scripts_to_save=scripts_to_save,
+                             debug=args.debug)
+
+    params = conf["params"]
+    params["vae_params"]["vocab"] = vocab
+    params["vae_params"]["device"] = device
+
+    print("Here")
+
+    trainerVAE = TrainerVAE(train_data, val_data, test_data, train_labels, val_labels, test_labels, logging, 1000, 100, 10, 0.1, params["vae_params"])
+
+    trainerVAE.train(1)
     #
     # vocab = train_data.vocab
     # print('Vocabulary size: %d' % len(vocab))
@@ -110,6 +136,7 @@ def main(args):
     # logging("test mi1: {}".format(test_loss[4]))
     # logging("test mi2: {}".format(test_loss[5]))
 
+
 def add_args(parser):
     parser.add_argument('--data_name', type=str, default='yelp',
                         help='data name')
@@ -121,7 +148,7 @@ def add_args(parser):
                         help='test data path')
     parser.add_argument('--save', type=str, default='checkpoint/ours',
                         help='directory name to save')
-    parser.add_argument('--bsz', type=int, default=32,
+    parser.add_argument('--bsz', type=int, default=128,
                         help='batch size for training')
     parser.add_argument('--text_only', default=False, action='store_true',
                         help='use text only without feats')

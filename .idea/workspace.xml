@@ -2,8 +2,15 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="e8cd9925-26a4-4f81-ac2f-89007a27403a" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/models/base_network.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/models/utils.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/models/vae.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/base_network.py" beforeDir="false" afterPath="$PROJECT_DIR$/base_network.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/base_network.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/file_io.py" beforeDir="false" afterPath="$PROJECT_DIR$/file_io.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run.py" beforeDir="false" afterPath="$PROJECT_DIR$/run.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/text_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/text_utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -30,6 +37,11 @@
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
   </component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/models" />
+    </key>
+  </component>
   <component name="SvnConfiguration">
     <configuration />
   </component>
@@ -41,13 +53,35 @@
       <option name="presentableId" value="Default" />
       <updated>1605206349860</updated>
     </task>
+    <task id="LOCAL-00001" summary="base_network">
+      <created>1606278450656</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1606278450656</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="base_network" />
+    <option name="LAST_COMMIT_MESSAGE" value="base_network" />
+  </component>
   <component name="WindowStateProjectService">
-    <state x="1440" y="30" key="com.intellij.ide.util.TipDialog" timestamp="1606252090194">
-      <screen x="1440" y="0" width="1920" height="1080" />
+    <state x="1157" y="-912" key="CommitChangelistDialog2" timestamp="1606278450494">
+      <screen x="641" y="-1080" width="1920" height="1080" />
+    </state>
+    <state x="1157" y="-912" key="CommitChangelistDialog2/0.0.1440.900/-1279.-1080.1920.1080/641.-1080.1920.1080@641.-1080.1920.1080" timestamp="1606278450494" />
+    <state x="1201" y="-812" key="Vcs.Push.Dialog.v2" timestamp="1606278452347">
+      <screen x="641" y="-1080" width="1920" height="1080" />
+    </state>
+    <state x="1201" y="-812" key="Vcs.Push.Dialog.v2/0.0.1440.900/-1279.-1080.1920.1080/641.-1080.1920.1080@641.-1080.1920.1080" timestamp="1606278452347" />
+    <state x="0" y="25" key="com.intellij.ide.util.TipDialog" timestamp="1606816925062">
+      <screen x="0" y="0" width="1440" height="900" />
     </state>
     <state x="-1279" y="-1057" key="com.intellij.ide.util.TipDialog/0.0.1440.900/-1279.-1080.1920.1080/641.-1080.1920.1080@-1279.-1080.1920.1080" timestamp="1605311582598" />
+    <state x="0" y="25" key="com.intellij.ide.util.TipDialog/0.0.1440.900/-1279.-1080.1920.1080/641.-1080.1920.1080@0.0.1440.900" timestamp="1606816925062" />
+    <state x="0" y="25" key="com.intellij.ide.util.TipDialog/0.0.1440.900/1440.0.1920.1080@0.0.1440.900" timestamp="1606702627721" />
     <state x="1440" y="30" key="com.intellij.ide.util.TipDialog/0.0.1440.900/1440.0.1920.1080@1440.0.1920.1080" timestamp="1606252090194" />
   </component>
 </project>

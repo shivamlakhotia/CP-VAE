@@ -71,28 +71,22 @@ class VocabEntry(object):
         self.id2word_ = list(self.word2id.keys())
 
 class MonoTextData(object):
-    def __init__(self, fname, label=False, max_length=None, vocab=None, glove=False):
+    def __init__(self, fname0, fname1, max_length=None, vocab=None, glove=False):
         super(MonoTextData, self).__init__()
         self.data, self.vocab, self.dropped, self.labels = self._read_corpus(
-            fname, label, max_length, vocab, glove)
+            fname0, fname1, max_length, vocab, glove)
 
     def __len__(self):
         return len(self.data)
 
-    def _read_corpus(self, fname, label, max_length, vocab, glove):
-        data = []
-        labels = [] if label else None
+    def _read_corpus(self, fname0, fname1, max_length, vocab, glove):
         dropped = 0
 
-        sents = []
-        with open(fname) as fin:
+        data0 = []
+        sents0 = []
+        with open(fname0) as fin:
             for line in fin:
-                if label:
-                    split_line = line.strip().split('\t')
-                    lb = split_line[0]
-                    split_line = split_line[1].split()
-                else:
-                    split_line = line.strip().split()
+                split_line = line.strip().split()
 
                 if len(split_line) < 1:
                     dropped += 1
@@ -103,10 +97,34 @@ class MonoTextData(object):
                         dropped += 1
                         continue
 
-                if label:
-                    labels.append(int(lb))
-                sents.append(split_line)
-                data.append(split_line)
+                sents0.append(split_line)
+                data0.append(split_line)
+
+        labels0 = [0 for _ in data0]
+
+        data1 = []
+        sents1 = []
+        with open(fname1) as fin:
+            for line in fin:
+                split_line = line.strip().split()
+
+                if len(split_line) < 1:
+                    dropped += 1
+                    continue
+
+                if max_length:
+                    if len(split_line) > max_length:
+                        dropped += 1
+                        continue
+
+                sents1.append(split_line)
+                data1.append(split_line)
+
+        labels1 = [1 for _ in data1]
+
+        sents = sents0 + sents1
+        data = data0 + data1
+        labels = labels0 + labels1
 
         if isinstance(vocab, int):
             vocab = VocabEntry(vocab)
