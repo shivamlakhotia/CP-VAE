@@ -73,55 +73,11 @@ class VocabEntry(object):
 class MonoTextData(object):
     def __init__(self, fname, label=False, max_length=None, vocab=None, glove=False):
         super(MonoTextData, self).__init__()
-        self.data, self.vocab, self.dropped, self.labels = self._read_corpus(
+        self.data, self.vocab, self.dropped, self.sentiment_labels, self.tense_labels = self._read_corpus(
             fname, label, max_length, vocab, glove)
 
     def __len__(self):
         return len(self.data)
-
-    def _read_corpus(self, fname, label, max_length, vocab, glove):
-        data = []
-        labels = [] if label else None
-        dropped = 0
-
-        sents = []
-        with open(fname) as fin:
-            for line in fin:
-                if label:
-                    split_line = line.strip().split('\t')
-                    lb = split_line[0]
-                    split_line = split_line[1].split()
-                else:
-                    split_line = line.strip().split()
-
-                if len(split_line) < 1:
-                    dropped += 1
-                    continue
-
-                if max_length:
-                    if len(split_line) > max_length:
-                        dropped += 1
-                        continue
-
-                if label:
-                    labels.append(int(lb))
-                sents.append(split_line)
-                data.append(split_line)
-
-        if isinstance(vocab, int):
-            vocab = VocabEntry(vocab)
-            vocab.build(sents)
-            if glove:
-                vocab.create_glove_embed()
-        elif vocab is None:
-            vocab = VocabEntry()
-            vocab.build(sents)
-            if glove:
-                vocab.create_glove_embed()
-
-        data = [[vocab[word] for word in x] for x in data]
-
-        return data, vocab, dropped, labels
 
     def _to_tensor(self, batch_data, batch_first, device, min_len=0):
         batch_data = [sent + [self.vocab['</s>']] for sent in batch_data]
@@ -165,26 +121,30 @@ class MonoTextData(object):
         change_loc.append(len(sort_len))
 
         batch_data_list = []
-        batch_label_list = []
+        batch_sentiment_label_list = []
+        batch_tense_label_list = []
         total = 0
         cur = 0
         for idx in change_loc:
             while cur < idx:
                 batch_data = []
-                batch_label = []
+                batch_sentiment_label = []
+                batch_tense_label =[]
                 nxt = min(cur + batch_size, idx)
                 for id_ in range(cur, nxt):
                     batch_data.append(self.data[sort_idx[id_]])
-                    batch_label.append(self.labels[sort_idx[id_]])
+                    batch_sentiment_label.append(self.sentiment_labels[sort_idx[id_]])
+                    batch_tense_label.append(self.tense_labels[sort_idx[id_]])
                 cur = nxt
                 batch_data, sents_len = self._to_tensor(batch_data, batch_first, device, min_len)
                 batch_data_list.append(batch_data)
-                batch_label_list.append(batch_label)
+                batch_sentiment_label_list.append(batch_sentiment_label)
+                batch_tense_label_list.append(batch_tense_label)
 
                 total += batch_data.size(0)
                 assert sents_len == ([sents_len[0]] * len(sents_len))
 
-        return batch_data_list, batch_label_list
+        return batch_data_list, batch_sentiment_label_list, batch_tense_label_list
 
     def create_data_batch(self, batch_size, device, batch_first=False):
         sents_len = np.array([len(sent) for sent in self.data])
@@ -261,3 +221,53 @@ class MonoTextData(object):
         batch_data, sents_len = self._to_tensor(batch_data, batch_first, device)
 
         return batch_data, sents_len
+
+    def _read_corpus(self, fname, label, max_length, vocab, glove):
+        data = []
+        sentiment_labels = [] if label else None
+        tense_labels = [] if label else None
+        dropped = 0
+
+        sents = []
+        with open(fname) as fin:
+            header = fin.readline()
+            # print(header)
+            for line in fin:
+                if label:
+                    split_line = line.strip().split('\t')
+                    line_num = split_line[0]
+                    sent_lb = split_line[2]
+                    tense_lb = split_line[3]
+                    split_line = split_line[1].split()
+                else:
+                    split_line = line.strip().split()
+
+                if len(split_line) < 1:
+                    dropped += 1
+                    continue
+
+                if max_length:
+                    if len(split_line) > max_length:
+                        dropped += 1
+                        continue
+
+                if label:
+                    sentiment_labels.append(int(sent_lb))
+                    tense_labels.append(int(tense_lb))
+                sents.append(split_line)
+                data.append(split_line)
+
+        if isinstance(vocab, int):
+            vocab = VocabEntry(vocab)
+            vocab.build(sents)
+            if glove:
+                vocab.create_glove_embed()
+        elif vocab is None:
+            vocab = VocabEntry()
+            vocab.build(sents)
+            if glove:
+                vocab.create_glove_embed()
+
+        data = [[vocab[word] for word in x] for x in data]
+
+        return data, vocab, dropped, sentiment_labels, tense_labels

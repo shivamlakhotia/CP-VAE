@@ -15,10 +15,13 @@ import time
 import os
 
 class DecomposedVAE:
-    def __init__(self, train, valid, test, feat, bsz, save_path, logging, log_interval, num_epochs,
+    def __init__(self, train, valid, test, train_sentiments, train_tenses, dev_sentiments, dev_tenses, test_sentiments, test_tenses, feat, bsz, save_path, logging, log_interval, num_epochs,
                  enc_lr, dec_lr, warm_up, kl_start, beta1, beta2, srec_weight, reg_weight, ic_weight,
                  aggressive, text_only, vae_params):
         super(DecomposedVAE, self).__init__()
+        print("Decomposed VAE:", bsz, save_path, logging, log_interval, num_epochs,
+                 enc_lr, dec_lr, warm_up, kl_start, beta1, beta2, srec_weight, reg_weight, ic_weight,
+                 aggressive, text_only, vae_params)
         self.bsz = bsz
         self.save_path = save_path
         self.logging = logging
@@ -39,6 +42,17 @@ class DecomposedVAE:
         self.use_cuda = torch.cuda.is_available()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+        print("train_sentiments:", len(train_sentiments))
+        print("train_tenses:", len(train_tenses))
+        print("train:", len(train))
+
+        self.train_sentiments = train_sentiments
+        self.train_tenses = train_tenses
+        self.dev_sentiments = dev_sentiments
+        self.dev_tenses = dev_tenses
+        self.test_sentiments = test_sentiments
+        self.test_tenses = test_tenses
+        
         self.text_only = text_only
         if self.text_only:
             self.train_data, self.train_feat = train, train
@@ -51,6 +65,8 @@ class DecomposedVAE:
         self.feat = feat
 
         self.vae = VAE(**vae_params)
+        self.sentiment_classifier = nn.Sequential(nn.Linear(vae_params['dec_nh'], 2), nn.Softmax()).to(self.device)
+        self.tense_classifier = nn.Sequential(nn.Linear(vae_params['dec_nh'], 2), nn.Softmax()).to(self.device)
         if self.use_cuda:
             self.vae.cuda()
 
@@ -69,6 +85,8 @@ class DecomposedVAE:
         total_kl1_loss = 0
         total_kl2_loss = 0
         total_srec_loss = 0
+        total_sentiment_loss = 0
+        total_tense_loss = 0
         start_time = time.time()
         step = 0
         num_words = 0
@@ -77,6 +95,8 @@ class DecomposedVAE:
         for idx in np.random.permutation(range(self.nbatch)):
             batch_data = self.train_data[idx]
             batch_feat = self.train_feat[idx]
+            batch_sentiment_labels = self.train_sentiments[idx]
+            batch_tense_labels = self.train_tenses[idx]
             sent_len, batch_size = batch_data.size()
 
             shift = np.random.randint(max(1, sent_len - 9))
@@ -107,6 +127,11 @@ class DecomposedVAE:
                 burn_num_words += (burn_sent_len - 1) * burn_batch_size
 
                 logits, kl1_loss, kl2_loss, reg_ic = self.vae.loss(batch_data_enc, batch_feat_enc)
+                # sl, bs, hs
+                classifier_input = logits.permute(1, 0, 2)
+                classifier_input = classifier_input.view(-1, classifier_input.size(2))
+                prediction = self.classifier(classifier_input)
+                classification_loss = F.cross_entropy(prediction, )
                 logits = logits.view(-1, logits.size(2))
                 rec_loss = F.cross_entropy(logits, target_enc.view(-1), reduction="none")
                 rec_loss = rec_loss.view(-1, burn_batch_size).sum(0)
@@ -140,8 +165,15 @@ class DecomposedVAE:
             self.enc_optimizer.zero_grad()
             self.dec_optimizer.zero_grad()
 
-            vae_logits, vae_kl1_loss, vae_kl2_loss, reg_ic = self.vae.loss(
+            vae_logits, vae_kl1_loss, vae_kl2_loss, reg_ic, final_hidden = self.vae.loss(
                 batch_data, batch_feat, no_ic=self.ic_weight == 0)
+            # print("Final Hidden: ", final_hidden.shape)
+            sentiment_prediction = self.sentiment_classifier(torch.squeeze(final_hidden))
+            tense_prediction = self.tense_classifier(torch.squeeze(final_hidden))
+            # print("prediction: ", prediction, torch.tensor(batch_sentiment_labels).shape)
+            sentiment_classification_loss = F.cross_entropy(sentiment_prediction, torch.tensor(batch_sentiment_labels, device=self.device))
+            tense_classification_loss = F.cross_entropy(tense_prediction, torch.tensor(batch_tense_labels, device=self.device))
+            # print("Classification_loss: ", classification_loss)
             vae_logits = vae_logits.view(-1, vae_logits.size(2))
             vae_rec_loss = F.cross_entropy(vae_logits, target.view(-1), reduction="none")
             vae_rec_loss = vae_rec_loss.view(-1, batch_size).sum(0)
@@ -152,7 +184,9 @@ class DecomposedVAE:
             total_rec_loss += vae_rec_loss.sum().item()
             total_kl1_loss += vae_kl1_loss.sum().item()
             total_kl2_loss += vae_kl2_loss.sum().item()
-            loss = loss + vae_loss
+            total_sentiment_loss += sentiment_classification_loss.sum().item()
+            total_tense_loss += tense_classification_loss.sum().item()
+            loss = loss + vae_loss + sentiment_classification_loss + tense_classification_loss
 
             if self.text_only:
                 while True:
@@ -162,7 +196,7 @@ class DecomposedVAE:
                         break
                 idx = np.random.choice(batch_size, batch_size, replace=False)
                 neg_feat = neg_feat[:, idx]
-                var_loss, reg_loss, var_raw_loss = self.vae.var_loss(batch_feat, neg_feat, 1)
+                srec_loss, reg_loss, srec_raw_loss = self.vae.var_loss(batch_feat, neg_feat, 1)
             else:
                 idx = np.random.choice(self.feat.shape[1], batch_size * 10)
                 neg_feat = torch.tensor(self.feat[idx], dtype=torch.float,
@@ -182,14 +216,16 @@ class DecomposedVAE:
                 cur_rec_loss = total_rec_loss / num_sents
                 cur_kl1_loss = total_kl1_loss / num_sents
                 cur_kl2_loss = total_kl2_loss / num_sents
+                cur_sent_loss = total_sentiment_loss / num_sents
+                cur_tense_loss = total_tense_loss / num_sents
                 cur_vae_loss = cur_rec_loss + cur_kl1_loss + cur_kl2_loss
                 cur_srec_loss = total_srec_loss / num_sents
                 elapsed = time.time() - start_time
                 self.logging(
                     '| epoch {:2d} | {:5d}/{:5d} batches | {:5.2f} ms/batch | loss {:3.2f} | '
-                    'recon {:3.2f} | kl1 {:3.2f} | kl2 {:3.2f} | srec {:3.2f}'.format(
+                    'recon {:3.2f} | kl1 {:3.2f} | kl2 {:3.2f} | srec {:3.2f} | sent_class {:3.2f} | tense_class {:3.2f} '.format(
                         epoch, step, self.nbatch, elapsed * 1000 / self.log_interval, cur_vae_loss,
-                        cur_rec_loss, cur_kl1_loss, cur_kl2_loss, cur_srec_loss))
+                        cur_rec_loss, cur_kl1_loss, cur_kl2_loss, cur_srec_loss, cur_sent_loss, cur_tense_loss))
                 total_rec_loss = 0
                 total_kl1_loss = 0
                 total_kl2_loss = 0

@@ -50,6 +50,10 @@ class DecomposedVAE(nn.Module):
                  dec_ni, dec_nh, dec_dropout_in, dec_dropout_out,
                  vocab, n_vars, device, text_only):
         super(DecomposedVAE, self).__init__()
+
+        print("In VAE: ", lstm_ni, lstm_nh, lstm_nz, mlp_ni, mlp_nz,
+                 dec_ni, dec_nh, dec_dropout_in, dec_dropout_out,
+                 vocab, n_vars, device, text_only)
         model_init = uniform_initializer(0.01)
         enc_embed_init = uniform_initializer(0.1)
         dec_embed_init = uniform_initializer(0.1)
@@ -99,7 +103,9 @@ class DecomposedVAE(nn.Module):
         z1, KL1 = self.encode_syntax(x, nsamples)
         z2, KL2 = self.encode_semantic(feat, nsamples)
         z = torch.cat([z1, z2], -1)
-        outputs = self.decode(x[:-1], z)
+        outputs, final_hidden = self.decode(x[:-1], z)
+        # outputs: sl, bs, 1024 = num_dir*hidden_sz
+
         if no_ic:
             reg_ic = torch.zeros(10)
         else:
@@ -107,7 +113,7 @@ class DecomposedVAE(nn.Module):
             log_density = self.lstm_encoder.eval_inference_dist(soft_outputs, z1)
             logit = log_density.exp()
             reg_ic = -torch.log(torch.sigmoid(logit))
-        return outputs, KL1, KL2, reg_ic
+        return outputs, KL1, KL2, reg_ic, final_hidden
 
     def calc_mi_q(self, x, feat):
         mi1 = self.lstm_encoder.calc_mi(x)

@@ -18,7 +18,7 @@ import numpy as np
 def main(args):
     conf = config.CONFIG[args.data_name]
     data_pth = "data/%s" % args.data_name
-    train_data_pth = os.path.join(data_pth, "train_data.txt")
+    train_data_pth = os.path.join(data_pth, "train_input_data.csv")
     train_feat_pth = os.path.join(data_pth, "train_%s.npy" % args.feat)
     train_data = MonoTextData(train_data_pth, True)
     train_feat = np.load(train_feat_pth)
@@ -26,11 +26,11 @@ def main(args):
     vocab = train_data.vocab
     print('Vocabulary size: %d' % len(vocab))
 
-    dev_data_pth = os.path.join(data_pth, "dev_data.txt")
+    dev_data_pth = os.path.join(data_pth, "dev_input_data.csv")
     dev_feat_pth = os.path.join(data_pth, "dev_%s.npy" % args.feat)
     dev_data = MonoTextData(dev_data_pth, True, vocab=vocab)
     dev_feat = np.load(dev_feat_pth)
-    test_data_pth = os.path.join(data_pth, "test_data.txt")
+    test_data_pth = os.path.join(data_pth, "test_input_data.csv")
     test_feat_pth = os.path.join(data_pth, "test_%s.npy" % args.feat)
     test_data = MonoTextData(test_data_pth, True, vocab=vocab)
     test_feat = np.load(test_feat_pth)
@@ -46,9 +46,9 @@ def main(args):
                              debug=args.debug)
 
     if args.text_only:
-        train = train_data.create_data_batch(args.bsz, device)
-        dev = dev_data.create_data_batch(args.bsz, device)
-        test = test_data.create_data_batch(args.bsz, device)
+        train, train_sentiments, train_tenses = train_data.create_data_batch_labels(args.bsz, device)
+        dev, dev_sentiments, dev_tenses = dev_data.create_data_batch_labels(args.bsz, device)
+        test, test_sentiments, test_tenses = test_data.create_data_batch_labels(args.bsz, device)
         feat = train
     else:
         train = train_data.create_data_batch_feats(args.bsz, train_feat, device)
@@ -56,10 +56,18 @@ def main(args):
         test = test_data.create_data_batch_feats(args.bsz, test_feat, device)
         feat = train_feat
 
+    print("data done.")
+
     kwargs = {
         "train": train,
         "valid": dev,
         "test": test,
+        "train_sentiments": train_sentiments,
+        "train_tenses" : train_tenses,
+        "dev_sentiments": dev_sentiments,
+        "dev_tenses": dev_tenses,
+        "test_sentiments": test_sentiments,
+        "test_tenses": test_tenses,
         "feat": feat,
         "bsz": args.bsz,
         "save_path": save_path,

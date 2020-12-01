@@ -259,6 +259,8 @@ class LSTMDecoder(nn.Module):
 
         self.pred_linear = nn.Linear(nh, len(vocab), bias=False)
 
+        self.hiddens = torch.tensor([], device=device)
+
         self.reset_parameters(model_init, emb_init)
 
     def reset_parameters(self, model_init, emb_init):
@@ -283,12 +285,15 @@ class LSTMDecoder(nn.Module):
         z = z.view(batch_size * n_sample, self.nz)
         c_init = self.trans_linear(z).unsqueeze(0)
         h_init = torch.tanh(c_init)
-        output, _ = self.lstm(word_embed, (h_init, c_init))
+        output, (h_out, _) = self.lstm(word_embed, (h_init, c_init))
 
+        # print("Hidden shape: ", h_out.shape)
+        # print("Output shape: ", output.shape)
+        
         output = self.dropout_out(output)
         output_logits = self.pred_linear(output)
 
-        return output_logits.view(-1, batch_size, len(self.vocab))
+        return output_logits.view(-1, batch_size, len(self.vocab)), h_out
 
     def decode(self, z, greedy=True):
         batch_size = z.size(0)
