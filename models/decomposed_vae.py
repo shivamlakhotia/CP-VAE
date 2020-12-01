@@ -230,6 +230,8 @@ class DecomposedVAE:
                 total_kl1_loss = 0
                 total_kl2_loss = 0
                 total_srec_loss = 0
+                total_sentiment_loss = 0
+                total_tense_loss = 0
                 num_sents = 0
                 num_words = 0
                 start_time = time.time()
@@ -241,6 +243,8 @@ class DecomposedVAE:
         total_rec_loss = 0
         total_kl1_loss = 0
         total_kl2_loss = 0
+        total_sentiment_loss = 0
+        total_tense_loss = 0
         total_mi1 = 0
         total_mi2 = 0
         num_sents = 0
@@ -253,12 +257,18 @@ class DecomposedVAE:
                 batch_data = batch_data[shift:min(sent_len, shift + 10), :]
                 sent_len, batch_size = batch_data.size()
                 target = batch_data[1:]
+                # batch_sentiment_labels = self.train_sentiments[idx]
+                # batch_tense_labels = self.train_tenses[idx]
 
                 num_sents += batch_size
                 num_words += (sent_len - 1) * batch_size
 
-                vae_logits, vae_kl1_loss, vae_kl2_loss, _ = self.vae.loss(
+                vae_logits, vae_kl1_loss, vae_kl2_loss, _, final_hidden = self.vae.loss(
                     batch_data, batch_feat)
+                sentiment_prediction = self.sentiment_classifier(torch.squeeze(final_hidden))
+                tense_prediction = self.tense_classifier(torch.squeeze(final_hidden))
+                # sentiment_classification_loss = F.cross_entropy(sentiment_prediction, torch.tensor(batch_sentiment_labels, device=self.device))
+                # tense_classification_loss = F.cross_entropy(tense_prediction, torch.tensor(batch_tense_labels, device=self.device))
                 vae_logits = vae_logits.view(-1, vae_logits.size(2))
                 vae_rec_loss = F.cross_entropy(vae_logits, target.view(-1), reduction="none")
                 total_rec_loss += vae_rec_loss.sum().item()
