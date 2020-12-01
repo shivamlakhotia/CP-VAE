@@ -140,7 +140,61 @@ class MonoTextData(object):
         data = [[vocab[word] for word in x] for x in data]
 
         return data, vocab, dropped, labels
+    
+    """
+    def _read_corpus(self, fname, label, max_length, vocab, glove):
+        data = []
+        #sentiment_labels = [] if label else None
+        #tense_labels = [] if label else None
+        labels = [] if label else None
+        dropped = 0
 
+        sents = []
+        with open(fname) as fin:
+            header = fin.readline()
+            # print(header)
+            for line in fin:
+                if label:
+                    split_line = line.strip().split('\t')
+                    line_num = split_line[0]
+                    sent_lb = split_line[2]
+                    tense_lb = split_line[3]
+                    split_line = split_line[1].split()
+                else:
+                    split_line = line.strip().split()
+
+                if len(split_line) < 1:
+                    dropped += 1
+                    continue
+
+                if max_length:
+                    if len(split_line) > max_length:
+                        dropped += 1
+                        continue
+
+                if label:
+                    #sentiment_labels.append(int(sent_lb))
+                    #tense_labels.append(int(tense_lb))
+                    labels.append(int(sent_lb+tense_lb,2))
+                sents.append(split_line)
+                data.append(split_line)
+
+        if isinstance(vocab, int):
+            vocab = VocabEntry(vocab)
+            vocab.build(sents)
+            if glove:
+                vocab.create_glove_embed()
+        elif vocab is None:
+            vocab = VocabEntry()
+            vocab.build(sents)
+            if glove:
+                vocab.create_glove_embed()
+
+        data = [[vocab[word] for word in x] for x in data]
+
+        return data, vocab, dropped, labels
+    """
+    
     def _to_tensor(self, batch_data, batch_first, device, min_len=0):
         batch_data = [sent + [self.vocab['</s>']] for sent in batch_data]
         sents_len = [len(sent) for sent in batch_data]
