@@ -78,6 +78,22 @@ class DecomposedVAE:
         self.nbatch = len(self.train_data)
         self.anneal_rate = (1.0 - kl_start) / (warm_up * self.nbatch)
 
+    def expand_labels(self, sentiment_labels, tense_labels, batch_size):
+        print("batch_sentiment_labels dims:", sentiment_labels)
+        expanded_sentiment_labels = sentiment_labels.repeat(batch_size)
+        print("expanded_sentiment_labels dims:", expanded_sentiment_labels)
+
+        print("batch_tense_labels dims: ", tense_labels)
+        expanded_tense_labels = torch.tensor([], device=self.device)
+        for i in range(batch_size):
+            unit_tense_labels = torch.roll(tense_labels, i, 0)
+            expanded_tense_labels = torch.cat((expanded_tense_labels, unit_tense_labels), dim=0)
+        print("expanded_tense_labels dims: ", expanded_tense_labels)
+
+        assert(expanded_sentiment_labels.shape == expanded_tense_labels.shape)
+        return expanded_sentiment_labels, expanded_tense_labels
+
+
     def train(self, epoch):
         self.vae.train()
 
@@ -95,13 +111,16 @@ class DecomposedVAE:
         for idx in np.random.permutation(range(self.nbatch)):
             batch_data = self.train_data[idx]
             batch_feat = self.train_feat[idx]
-            batch_sentiment_labels = self.train_sentiments[idx]
-            batch_tense_labels = self.train_tenses[idx]
+            batch_sentiment_labels = torch.tensor(self.train_sentiments[idx], device=self.device)
+            batch_tense_labels = torch.tensor(self.train_tenses[idx], device=self.device)
             sent_len, batch_size = batch_data.size()
+
+            expanded_sentiment_labels, expanded_tense_labels = self.expand_labels(batch_sentiment_labels, batch_tense_labels, batch_size)
 
             shift = np.random.randint(max(1, sent_len - 9))
             batch_data = batch_data[shift:min(sent_len, shift + 10), :]
             sent_len, batch_size = batch_data.size()
+
 
             target = batch_data[1:]
             num_words += (sent_len - 1) * batch_size
@@ -171,8 +190,8 @@ class DecomposedVAE:
             sentiment_prediction = self.sentiment_classifier(torch.squeeze(final_hidden))
             tense_prediction = self.tense_classifier(torch.squeeze(final_hidden))
             # print("prediction: ", prediction, torch.tensor(batch_sentiment_labels).shape)
-            sentiment_classification_loss = F.cross_entropy(sentiment_prediction, torch.tensor(batch_sentiment_labels, device=self.device))
-            tense_classification_loss = F.cross_entropy(tense_prediction, torch.tensor(batch_tense_labels, device=self.device))
+            sentiment_classification_loss = F.cross_entropy(sentiment_prediction, batch_sentiment_labels)
+            tense_classification_loss = F.cross_entropy(tense_prediction, batch_tense_labels)
             # print("Classification_loss: ", classification_loss)
             vae_logits = vae_logits.view(-1, vae_logits.size(2))
             vae_rec_loss = F.cross_entropy(vae_logits, target.view(-1), reduction="none")
