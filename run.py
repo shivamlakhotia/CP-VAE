@@ -66,7 +66,9 @@ def main(args):
 
     print("Here")
 
-    trainerVAE = TrainerVAE(train_data, val_data, test_data, train_labels, val_labels, test_labels, logging, 1000, 100, 10, 0.1, params["vae_params"])
+    trainerVAE = TrainerVAE(train_data, val_data, test_data, train_labels, val_labels, test_labels, logging, 1000, 100, 10, 0.1, params["vae_params"], params["lr_params"])
+
+    print("Here1")
 
     trainerVAE.train(1)
     #

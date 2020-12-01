@@ -124,6 +124,7 @@ class LSTMEncoder(GaussianEncoderBase):
 
 class StyleClassifier(nn.Module):
     def __init__(self, ns, num_labels):
+        super(StyleClassifier, self).__init__()
         self.linear = nn.Linear(ns, 2**num_labels, bias=False)
 
     def forward(self, inputs):
@@ -148,10 +149,10 @@ class ContentDecoder(nn.Module):
         self.pred_linear = nn.Linear(nh, len(vocab), bias=False)
         self.trans_linear = nn.Linear(nc, nh, bias=False)
 
-        self.reset_parameters(model_init, emb_init)
-
         self.dropout_in = nn.Dropout(dropout_in)
         self.dropout_out = nn.Dropout(dropout_out)
+
+        self.reset_parameters(model_init, emb_init)
 
     def reset_parameters(self, model_init, emb_init):
         for param in self.parameters():
@@ -290,12 +291,12 @@ class LSTMDecoder(nn.Module):
         self.pred_linear = nn.Linear(nh, len(vocab), bias=False)
         self.trans_linear = nn.Linear(ns + nc, nh, bias=False)
 
-        self.reset_parameters(model_init, emb_init)
-
         self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1)
 
         self.dropout_in = nn.Dropout(dropout_in)
         self.dropout_out = nn.Dropout(dropout_out)
+
+        self.reset_parameters(model_init, emb_init)
 
     def reset_parameters(self, model_init, emb_init):
         for param in self.parameters():

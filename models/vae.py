@@ -49,8 +49,9 @@ class VAE(nn.Module):
 
 
 class TrainerVAE:
-    def __init__(self, train, valid, test, train_labels, valid_labels, test_labels, logging, num_epochs, log_interval, warm_up, kl_start,
-                 vae_params):
+    def __init__(self, train, valid, test, train_labels, valid_labels, test_labels, logging, num_epochs, log_interval,
+                 warm_up, kl_start,
+                 vae_params, lr_params):
         super(TrainerVAE, self).__init__()
 
         self.use_cuda = torch.cuda.is_available()
@@ -74,13 +75,13 @@ class TrainerVAE:
         if self.use_cuda:
             self.vae.cuda()
 
-        self.enc_optimizer = optim.SGD(self.vae.encoder.parameters(), lr=vae_params['enc_lr'])
-        self.dec_optimizer = optim.SGD(self.vae.decoder.parameters(), lr=vae_params['dec_lr'])
-        self.s_given_c_optimizer = optim.SGD(self.vae.s_given_c.parameters(), lr=vae_params['s_given_c_lr'])
-        self.content_decoder_optimizer = optim.SGD(self.vae.content_decoder.parameters(),
-                                                   lr=vae_params['content_decoder_lr'])
-        self.style_classifier_optimizer = optim.SGD(self.vae.style_classifier.parameters(),
-                                                    lr=vae_params['style_classifier_lr'])
+        self.enc_optimizer = optim.Adam(self.vae.encoder.parameters(), lr=lr_params['enc_lr'])
+        self.dec_optimizer = optim.Adam(self.vae.decoder.parameters(), lr=lr_params['dec_lr'])
+        self.s_given_c_optimizer = optim.Adam(self.vae.s_given_c.parameters(), lr=lr_params['s_given_c_lr'])
+        self.content_decoder_optimizer = optim.Adam(self.vae.content_decoder.parameters(),
+                                                    lr=lr_params['content_decoder_lr'])
+        self.style_classifier_optimizer = optim.Adam(self.vae.style_classifier.parameters(),
+                                                     lr=lr_params['style_classifier_lr'])
 
         self.nbatch = len(self.train_data)
         self.anneal_rate = (1.0 - kl_start) / (warm_up * self.nbatch)
@@ -123,7 +124,7 @@ class TrainerVAE:
 
         sent_len, batch_size = train_data.size()
         batch_size_y = train_labels.size()
-        assert(batch_size == batch_size_y)
+        assert (batch_size == batch_size_y)
 
         target = train_data[1:]
 

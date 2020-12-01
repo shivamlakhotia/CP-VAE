@@ -38,6 +38,13 @@ CONFIG["yelp"] = {
             "dec_dropout_in": 0,
             "dec_dropout_out": 0,
             "num_styles": 1,
+        },
+        "lr_params": {
+            "enc_lr": 5*1e-5,
+            "dec_lr": 5*1e-5,
+            "s_given_c_lr": 5*1e-5,
+            "content_decoder_lr": 5*1e-5,
+            "style_classifier_lr": 5*1e-5,
         }
     }
 }

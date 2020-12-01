@@ -2,15 +2,11 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="e8cd9925-26a4-4f81-ac2f-89007a27403a" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/models/base_network.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/utils.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/vae.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/base_network.py" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/file_io.py" beforeDir="false" afterPath="$PROJECT_DIR$/file_io.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/base_network.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/base_network.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/vae.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/vae.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/run.py" beforeDir="false" afterPath="$PROJECT_DIR$/run.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/utils/text_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/text_utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -60,22 +56,32 @@
       <option name="project" value="LOCAL" />
       <updated>1606278450656</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="First commit -- Need debug">
+      <created>1606817016869</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1606817016869</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="base_network" />
-    <option name="LAST_COMMIT_MESSAGE" value="base_network" />
+    <MESSAGE value="First commit -- Need debug" />
+    <option name="LAST_COMMIT_MESSAGE" value="First commit -- Need debug" />
   </component>
   <component name="WindowStateProjectService">
-    <state x="1157" y="-912" key="CommitChangelistDialog2" timestamp="1606278450494">
-      <screen x="641" y="-1080" width="1920" height="1080" />
+    <state x="1157" y="-891" key="CommitChangelistDialog2" timestamp="1606817016631">
+      <screen x="641" y="-1055" width="1920" height="1055" />
     </state>
     <state x="1157" y="-912" key="CommitChangelistDialog2/0.0.1440.900/-1279.-1080.1920.1080/641.-1080.1920.1080@641.-1080.1920.1080" timestamp="1606278450494" />
-    <state x="1201" y="-812" key="Vcs.Push.Dialog.v2" timestamp="1606278452347">
-      <screen x="641" y="-1080" width="1920" height="1080" />
+    <state x="1157" y="-891" key="CommitChangelistDialog2/0.25.1440.788/-1279.-1055.1920.1055/641.-1055.1920.1055@641.-1055.1920.1055" timestamp="1606817016631" />
+    <state x="1201" y="-793" key="Vcs.Push.Dialog.v2" timestamp="1606817020356">
+      <screen x="641" y="-1055" width="1920" height="1055" />
     </state>
     <state x="1201" y="-812" key="Vcs.Push.Dialog.v2/0.0.1440.900/-1279.-1080.1920.1080/641.-1080.1920.1080@641.-1080.1920.1080" timestamp="1606278452347" />
+    <state x="1201" y="-793" key="Vcs.Push.Dialog.v2/0.25.1440.788/-1279.-1055.1920.1055/641.-1055.1920.1055@641.-1055.1920.1055" timestamp="1606817020356" />
     <state x="0" y="25" key="com.intellij.ide.util.TipDialog" timestamp="1606816925062">
       <screen x="0" y="0" width="1440" height="900" />
     </state>
@@ -83,5 +89,9 @@
     <state x="0" y="25" key="com.intellij.ide.util.TipDialog/0.0.1440.900/-1279.-1080.1920.1080/641.-1080.1920.1080@0.0.1440.900" timestamp="1606816925062" />
     <state x="0" y="25" key="com.intellij.ide.util.TipDialog/0.0.1440.900/1440.0.1920.1080@0.0.1440.900" timestamp="1606702627721" />
     <state x="1440" y="30" key="com.intellij.ide.util.TipDialog/0.0.1440.900/1440.0.1920.1080@1440.0.1920.1080" timestamp="1606252090194" />
+    <state x="1259" y="-921" key="com.intellij.openapi.editor.actions.MultiplePasteAction$ClipboardContentChooser" timestamp="1606845754498">
+      <screen x="641" y="-1080" width="1920" height="1080" />
+    </state>
+    <state x="1259" y="-921" key="com.intellij.openapi.editor.actions.MultiplePasteAction$ClipboardContentChooser/0.0.1440.900/-1279.-1080.1920.1080/641.-1080.1920.1080@641.-1080.1920.1080" timestamp="1606845754498" />
   </component>
 </project>
