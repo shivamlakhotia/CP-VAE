@@ -51,12 +51,14 @@ class DecomposedVAE(nn.Module):
                  vocab, n_vars, device, text_only):
         super(DecomposedVAE, self).__init__()
 
-        print("In VAE: ", lstm_ni, lstm_nh, lstm_nz, mlp_ni, mlp_nz,
-                 dec_ni, dec_nh, dec_dropout_in, dec_dropout_out,
-                 vocab, n_vars, device, text_only)
+        # print("In VAE: ", lstm_ni, lstm_nh, lstm_nz, mlp_ni, mlp_nz,
+        #          dec_ni, dec_nh, dec_dropout_in, dec_dropout_out,
+        #          vocab, n_vars, device, text_only)
         model_init = uniform_initializer(0.01)
         enc_embed_init = uniform_initializer(0.1)
         dec_embed_init = uniform_initializer(0.1)
+
+        self.device = device
         self.lstm_encoder = LSTMEncoder(
             lstm_ni, lstm_nh, lstm_nz, len(vocab), model_init, enc_embed_init)
         if text_only:
@@ -114,6 +116,42 @@ class DecomposedVAE(nn.Module):
             logit = log_density.exp()
             reg_ic = -torch.log(torch.sigmoid(logit))
         return outputs, KL1, KL2, reg_ic, final_hidden
+
+    def expand_z(self, z1):
+        nz = z1.shape[-1]
+        batch_size = z1.shape[1]
+        nz_half = int(nz/2)
+        z11, z12 = torch.split(z1, [nz_half, nz_half], dim=-1)
+        expanded_z11 = z11.repeat(1, batch_size, 1)
+
+        expanded_z12 = torch.tensor([], device=self.device)
+        for i in range(batch_size):
+            unit_z12 = torch.roll(z12, i, 1)
+            expanded_z12 = torch.cat((expanded_z12, unit_z12), dim=1)
+
+        assert(expanded_z11.shape == expanded_z12.shape)
+        return torch.cat((expanded_z11, expanded_z12), dim=-1)
+
+
+    def expanded_loss(self, x, feat, tau=1.0, nsamples=1, no_ic=True):
+        z1, KL1 = self.encode_syntax(x, nsamples)
+        z2, KL2 = self.encode_semantic(feat, nsamples)
+        expanded_z1 = self.expand_z(z1)
+        expanded_z2 = z2.repeat(1, z2.shape[1], 1)
+        expanded_x = x.repeat(1, x.shape[1])
+        expanded_z = torch.cat([expanded_z1, expanded_z2], -1)
+        outputs, final_hidden = self.decode(expanded_x[:-1], expanded_z)
+        # outputs: sl, bs, 1024 = num_dir*hidden_sz
+
+        # if no_ic:
+        #     reg_ic = torch.zeros(10)
+        # else:
+        #     soft_outputs = gumbel_softmax(outputs, tau)
+        #     log_density = self.lstm_encoder.eval_inference_dist(soft_outputs, z1)
+        #     logit = log_density.exp()
+        #     reg_ic = -torch.log(torch.sigmoid(logit))
+
+        return outputs, KL1, KL2, None, final_hidden
 
     def calc_mi_q(self, x, feat):
         mi1 = self.lstm_encoder.calc_mi(x)

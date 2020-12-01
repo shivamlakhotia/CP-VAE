@@ -79,16 +79,16 @@ class DecomposedVAE:
         self.anneal_rate = (1.0 - kl_start) / (warm_up * self.nbatch)
 
     def expand_labels(self, sentiment_labels, tense_labels, batch_size):
-        print("batch_sentiment_labels dims:", sentiment_labels)
+        # print("batch_sentiment_labels dims:", sentiment_labels)
         expanded_sentiment_labels = sentiment_labels.repeat(batch_size)
-        print("expanded_sentiment_labels dims:", expanded_sentiment_labels)
+        # print("expanded_sentiment_labels dims:", expanded_sentiment_labels)
 
-        print("batch_tense_labels dims: ", tense_labels)
-        expanded_tense_labels = torch.tensor([], device=self.device)
+        # print("batch_tense_labels dims: ", tense_labels)
+        expanded_tense_labels = torch.tensor([], device=self.device, dtype=torch.long)
         for i in range(batch_size):
             unit_tense_labels = torch.roll(tense_labels, i, 0)
             expanded_tense_labels = torch.cat((expanded_tense_labels, unit_tense_labels), dim=0)
-        print("expanded_tense_labels dims: ", expanded_tense_labels)
+        # print("expanded_tense_labels dims: ", expanded_tense_labels)
 
         assert(expanded_sentiment_labels.shape == expanded_tense_labels.shape)
         return expanded_sentiment_labels, expanded_tense_labels
@@ -103,6 +103,8 @@ class DecomposedVAE:
         total_srec_loss = 0
         total_sentiment_loss = 0
         total_tense_loss = 0
+        total_ex_sentiment_loss = 0
+        total_ex_tense_loss = 0
         start_time = time.time()
         step = 0
         num_words = 0
@@ -111,8 +113,8 @@ class DecomposedVAE:
         for idx in np.random.permutation(range(self.nbatch)):
             batch_data = self.train_data[idx]
             batch_feat = self.train_feat[idx]
-            batch_sentiment_labels = torch.tensor(self.train_sentiments[idx], device=self.device)
-            batch_tense_labels = torch.tensor(self.train_tenses[idx], device=self.device)
+            batch_sentiment_labels = torch.tensor(self.train_sentiments[idx], device=self.device, dtype=torch.long)
+            batch_tense_labels = torch.tensor(self.train_tenses[idx], device=self.device, dtype=torch.long)
             sent_len, batch_size = batch_data.size()
 
             expanded_sentiment_labels, expanded_tense_labels = self.expand_labels(batch_sentiment_labels, batch_tense_labels, batch_size)
@@ -189,10 +191,18 @@ class DecomposedVAE:
             # print("Final Hidden: ", final_hidden.shape)
             sentiment_prediction = self.sentiment_classifier(torch.squeeze(final_hidden))
             tense_prediction = self.tense_classifier(torch.squeeze(final_hidden))
-            # print("prediction: ", prediction, torch.tensor(batch_sentiment_labels).shape)
             sentiment_classification_loss = F.cross_entropy(sentiment_prediction, batch_sentiment_labels)
             tense_classification_loss = F.cross_entropy(tense_prediction, batch_tense_labels)
+            
             # print("Classification_loss: ", classification_loss)
+            _, _, _, _, expanded_final_hidden = self.vae.expanded_loss(
+                batch_data, batch_feat, no_ic=self.ic_weight == 0)
+            expanded_sentiment_prediction = self.sentiment_classifier(torch.squeeze(expanded_final_hidden))
+            expanded_tense_prediction = self.tense_classifier(torch.squeeze(expanded_final_hidden))
+            ex_sentiment_classification_loss = F.cross_entropy(expanded_sentiment_prediction, expanded_sentiment_labels)
+            ex_tense_classification_loss = F.cross_entropy(expanded_tense_prediction, expanded_tense_labels)
+            #
+            
             vae_logits = vae_logits.view(-1, vae_logits.size(2))
             vae_rec_loss = F.cross_entropy(vae_logits, target.view(-1), reduction="none")
             vae_rec_loss = vae_rec_loss.view(-1, batch_size).sum(0)
@@ -205,7 +215,10 @@ class DecomposedVAE:
             total_kl2_loss += vae_kl2_loss.sum().item()
             total_sentiment_loss += sentiment_classification_loss.sum().item()
             total_tense_loss += tense_classification_loss.sum().item()
-            loss = loss + vae_loss + sentiment_classification_loss + tense_classification_loss
+            total_ex_sentiment_loss += ex_sentiment_classification_loss.sum().item()
+            total_ex_tense_loss += ex_tense_classification_loss.sum().item()
+            loss = loss + vae_loss + sentiment_classification_loss + tense_classification_loss \
+                + ex_sentiment_classification_loss + ex_tense_classification_loss
 
             if self.text_only:
                 while True:
@@ -237,20 +250,25 @@ class DecomposedVAE:
                 cur_kl2_loss = total_kl2_loss / num_sents
                 cur_sent_loss = total_sentiment_loss / num_sents
                 cur_tense_loss = total_tense_loss / num_sents
+                cur_ex_sent_loss = total_ex_sentiment_loss / num_sents
+                cur_ex_tense_loss = total_ex_tense_loss / num_sents
                 cur_vae_loss = cur_rec_loss + cur_kl1_loss + cur_kl2_loss
                 cur_srec_loss = total_srec_loss / num_sents
                 elapsed = time.time() - start_time
                 self.logging(
                     '| epoch {:2d} | {:5d}/{:5d} batches | {:5.2f} ms/batch | loss {:3.2f} | '
-                    'recon {:3.2f} | kl1 {:3.2f} | kl2 {:3.2f} | srec {:3.2f} | sent_class {:3.2f} | tense_class {:3.2f} '.format(
+                    'recon {:3.2f} | kl1 {:3.2f} | kl2 {:3.2f} | srec {:3.2f} | sent_class {:3.2f} | tense_class {:3.2f} | '
+                    'ex_sent_class {{:3.5f}} | ex_tense_class {{:3.5f}}'.format(
                         epoch, step, self.nbatch, elapsed * 1000 / self.log_interval, cur_vae_loss,
-                        cur_rec_loss, cur_kl1_loss, cur_kl2_loss, cur_srec_loss, cur_sent_loss, cur_tense_loss))
+                        cur_rec_loss, cur_kl1_loss, cur_kl2_loss, cur_srec_loss, cur_sent_loss, cur_tense_loss, cur_ex_sent_loss, cur_ex_tense_loss))
                 total_rec_loss = 0
                 total_kl1_loss = 0
                 total_kl2_loss = 0
                 total_srec_loss = 0
                 total_sentiment_loss = 0
                 total_tense_loss = 0
+                total_ex_sentiment_loss =0
+                total_ex_tense_loss = 0
                 num_sents = 0
                 num_words = 0
                 start_time = time.time()
