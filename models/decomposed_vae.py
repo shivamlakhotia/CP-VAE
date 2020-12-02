@@ -72,8 +72,14 @@ class DecomposedVAE:
 
         self.enc_params = list(self.vae.lstm_encoder.parameters()) + \
             list(self.vae.mlp_encoder.parameters())
+
+        self.cls_params = list(self.sentiment_classifier.parameters()) + \
+            list(self.tense_classifier.parameters())
+
         self.enc_optimizer = optim.Adam(self.enc_params, lr=self.enc_lr)
         self.dec_optimizer = optim.SGD(self.vae.decoder.parameters(), lr=self.dec_lr)
+        self.cls_optimizer = optim.SGD(self.cls_params, lr=self.dec_lr)
+
 
         self.nbatch = len(self.train_data)
         self.anneal_rate = (1.0 - kl_start) / (warm_up * self.nbatch)
@@ -142,6 +148,7 @@ class DecomposedVAE:
             while self.aggressive and sub_iter < 100:
                 self.enc_optimizer.zero_grad()
                 self.dec_optimizer.zero_grad()
+                self.cls_optimizer.zero_grad()
 
                 target_enc = batch_data_enc[1:]
                 burn_sent_len, burn_batch_size = batch_data_enc.size()
@@ -185,6 +192,7 @@ class DecomposedVAE:
 
             self.enc_optimizer.zero_grad()
             self.dec_optimizer.zero_grad()
+            self.cls_optimizer.zero_grad()
 
             vae_logits, vae_kl1_loss, vae_kl2_loss, reg_ic, final_hidden = self.vae.loss(
                 batch_data, batch_feat, no_ic=self.ic_weight == 0)
@@ -243,6 +251,7 @@ class DecomposedVAE:
             if not self.aggressive:
                 self.enc_optimizer.step()
             self.dec_optimizer.step()
+            self.cls_optimizer.step()
 
             if step % self.log_interval == 0 and step > 0:
                 cur_rec_loss = total_rec_loss / num_sents
@@ -258,7 +267,7 @@ class DecomposedVAE:
                 self.logging(
                     '| epoch {:2d} | {:5d}/{:5d} batches | {:5.2f} ms/batch | loss {:3.2f} | '
                     'recon {:3.2f} | kl1 {:3.2f} | kl2 {:3.2f} | srec {:3.2f} | sent_class {:3.2f} | tense_class {:3.2f} | '
-                    'ex_sent_class {{:3.5f}} | ex_tense_class {{:3.5f}}'.format(
+                    'ex_sent_class {:3.5f} | ex_tense_class {:3.5f}'.format(
                         epoch, step, self.nbatch, elapsed * 1000 / self.log_interval, cur_vae_loss,
                         cur_rec_loss, cur_kl1_loss, cur_kl2_loss, cur_srec_loss, cur_sent_loss, cur_tense_loss, cur_ex_sent_loss, cur_ex_tense_loss))
                 total_rec_loss = 0
