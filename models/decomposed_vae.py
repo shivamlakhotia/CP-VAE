@@ -41,10 +41,11 @@ class DecomposedVAE:
         self.pre_mi = 0
         self.use_cuda = torch.cuda.is_available()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.lambda_class = 1e5
 
-        print("train_sentiments:", len(train_sentiments))
-        print("train_tenses:", len(train_tenses))
-        print("train:", len(train))
+        # print("train_sentiments:", len(train_sentiments))
+        # print("train_tenses:", len(train_tenses))
+        # print("train:", len(train))
 
         self.train_sentiments = train_sentiments
         self.train_tenses = train_tenses
@@ -117,6 +118,7 @@ class DecomposedVAE:
         num_sents = 0
 
         for idx in np.random.permutation(range(self.nbatch)):
+            self.lambda_class = self.lambda_class * 0.99  
             batch_data = self.train_data[idx]
             batch_feat = self.train_feat[idx]
             batch_sentiment_labels = torch.tensor(self.train_sentiments[idx], device=self.device, dtype=torch.long)
@@ -225,8 +227,8 @@ class DecomposedVAE:
             total_tense_loss += tense_classification_loss.sum().item()
             total_ex_sentiment_loss += ex_sentiment_classification_loss.sum().item()
             total_ex_tense_loss += ex_tense_classification_loss.sum().item()
-            loss = loss + vae_loss + sentiment_classification_loss + tense_classification_loss \
-                + ex_sentiment_classification_loss + ex_tense_classification_loss
+            loss = loss + vae_loss + self.lambda_class * (sentiment_classification_loss + tense_classification_loss \
+                + ex_sentiment_classification_loss + ex_tense_classification_loss)
 
             if self.text_only:
                 while True:
@@ -266,7 +268,7 @@ class DecomposedVAE:
                 elapsed = time.time() - start_time
                 self.logging(
                     '| epoch {:2d} | {:5d}/{:5d} batches | {:5.2f} ms/batch | loss {:3.2f} | '
-                    'recon {:3.2f} | kl1 {:3.2f} | kl2 {:3.2f} | srec {:3.2f} | sent_class {:3.2f} | tense_class {:3.2f} | '
+                    'recon {:3.2f} | kl1 {:3.2f} | kl2 {:3.2f} | srec {:3.2f} | sent_class {:3.5f} | tense_class {:3.5f} | '
                     'ex_sent_class {:3.5f} | ex_tense_class {:3.5f}'.format(
                         epoch, step, self.nbatch, elapsed * 1000 / self.log_interval, cur_vae_loss,
                         cur_rec_loss, cur_kl1_loss, cur_kl2_loss, cur_srec_loss, cur_sent_loss, cur_tense_loss, cur_ex_sent_loss, cur_ex_tense_loss))
@@ -284,6 +286,7 @@ class DecomposedVAE:
             step += 1
 
     def evaluate(self, eval_data, eval_feat):
+        print("In eval")
         self.vae.eval()
 
         total_rec_loss = 0
@@ -339,6 +342,7 @@ class DecomposedVAE:
         for epoch in range(1, self.num_epochs + 1):
             epoch_start_time = time.time()
             self.train(epoch)
+            self.save(self.save_path)
             val_loss = self.evaluate(self.valid_data, self.valid_feat)
 
             vae_loss = val_loss[1]
@@ -389,7 +393,11 @@ class DecomposedVAE:
         self.logging("saving to %s" % path)
         model_path = os.path.join(path, "model.pt")
         torch.save(self.vae.state_dict(), model_path)
+        torch.save(self.sentiment_classifier.state_dict(), os.path.join(path, "sentiment_cls.pt"))
+        torch.save(self.tense_classifier.state_dict(), os.path.join(path, "tense_cls.pt"))
 
     def load(self, path):
         model_path = os.path.join(path, "model.pt")
         self.vae.load_state_dict(torch.load(model_path))
+        self.sentiment_classifier.load_state_dict(torch.load(os.path.join(path, "sentiment_cls.pt")))
+        self.tense_classifier.load_state_dict(torch.load(os.path.join(path, "tense_cls.pt")))
