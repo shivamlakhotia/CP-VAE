@@ -1,1 +1,4 @@
 | epoch  1 |    10/ 3470 batches | 64347.46 ms/batch | loss 94.93 | vae_loss 94.19 | disent_loss 0.74 | recon 94.19 | kl 0.00
+| epoch  1 |    20/ 3470 batches | 62535.40 ms/batch | loss 102.53 | vae_loss 101.73 | disent_loss 0.80 | recon 101.73 | kl 0.00
+| epoch  1 |    30/ 3470 batches | 59708.99 ms/batch | loss 94.15 | vae_loss 93.42 | disent_loss 0.74 | recon 93.42 | kl 0.00
+| epoch  1 |    40/ 3470 batches | 67371.26 ms/batch | loss 99.48 | vae_loss 98.70 | disent_loss 0.78 | recon 98.70 | kl 0.01

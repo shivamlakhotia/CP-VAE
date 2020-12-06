@@ -35,23 +35,28 @@ def main(args):
     # print("Negative dataset size:", len(train1) + len(dev1) + len(test1))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    np.random.seed(0)
+    torch.manual_seed(0)
 
     conf = config.CONFIG[args.data_name] # Need to update !!
     data_pth = "data/%s" % args.data_name
     train_data_pth0 = os.path.join(data_pth, "sentiment.train.0")
     train_data_pth1 = os.path.join(data_pth, "sentiment.train.1")
     train_class = MonoTextData(train_data_pth0, train_data_pth1, glove=True)
-
     train_data, train_labels = train_class.create_data_batch_labels(args.bsz, device)
 
     vocab = train_class.vocab
     print('Vocabulary size: %d' % len(vocab))
 
-    #TODO: Val/Test Data Creation !
-    val_data = train_data
-    val_labels = train_labels
-    test_data = train_data
-    test_labels = train_labels
+    val_data_pth0 = os.path.join(data_pth, "sentiment.dev.0")
+    val_data_pth1 = os.path.join(data_pth, "sentiment.dev.1")
+    val_class = MonoTextData(val_data_pth0, val_data_pth1, glove=True)
+    val_data, val_labels = val_class.create_data_batch_labels(args.bsz, device)
+
+    test_data_pth0 = os.path.join(data_pth, "sentiment.test.0")
+    test_data_pth1 = os.path.join(data_pth, "sentiment.test.1")
+    test_class = MonoTextData(test_data_pth0, test_data_pth1, glove=True)
+    test_data, test_labels = test_class.create_data_batch_labels(args.bsz, device)
 
     save_path = '{}-{}'.format(args.save, args.data_name)
     save_path = os.path.join(save_path, time.strftime("%Y%m%d-%H%M%S"))
@@ -65,10 +70,11 @@ def main(args):
     params["vae_params"]["vocab"] = vocab
     params["vae_params"]["device"] = device
 
-    trainerVAE = TrainerVAE(train_data, val_data, test_data, train_labels, val_labels, test_labels, save_path, logging, params["num_epochs"], params["log_interval"], params["warm_up"], 
-    params["kl_start"], params["vae_params"], params["lr_params"])
+    trainerVAE = TrainerVAE(train_data, val_data, test_data, train_labels, val_labels, test_labels, save_path, logging, 
+    params["num_epochs"], params["log_interval"], params["warm_up"], params["kl_start"], params["vae_params"], params["lr_params"])
 
     trainerVAE.fit()
+    # trainerVAE.train(1)
     #
     # vocab = train_data.vocab
     # print('Vocabulary size: %d' % len(vocab))

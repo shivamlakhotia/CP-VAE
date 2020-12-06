@@ -86,9 +86,9 @@ class GaussianEncoderBase(nn.Module):
 
 
 class LSTMEncoder(GaussianEncoderBase):
-    def __init__(self, ni, nh, nc, ns, attention_heads, vocab_size, model_init, emb_init):
+    def __init__(self, ni, nh, nc, ns, attention_heads, vocab, device, model_init, emb_init):
         super(LSTMEncoder, self).__init__()
-        self.embed = nn.Embedding(vocab_size, ni)
+        self.embed = nn.Embedding(len(vocab), ni).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float))
 
         self.lstm = nn.LSTM(input_size=ni,
                             hidden_size=nh,
@@ -105,12 +105,13 @@ class LSTMEncoder(GaussianEncoderBase):
         emb_init(self.embed.weight)
 
     def forward(self, inputs):
-        if len(inputs.size()) > 2:
-            assert False
-            word_embed = torch.matmul(inputs, self.embed.weight)
-        else:
-            word_embed = self.embed(inputs)
+        # if len(inputs.size()) > 2:
+        #     assert False
+        #     word_embed = torch.matmul(inputs, self.embed.weight)
+        # else:
+        #     word_embed = self.embed(inputs)
 
+        word_embed = self.embed(inputs)
         outputs, (last_state, last_cell) = self.lstm(word_embed)
         seq_len, bsz, hidden_size = outputs.size()
         hidden_repr = outputs.view(seq_len, bsz, 2, -1).mean(2)
@@ -139,7 +140,8 @@ class ContentDecoder(nn.Module):
         self.vocab = vocab
         self.device = device
 
-        self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1)
+        # self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1)
+        self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float))
 
         self.lstm = nn.LSTM(input_size=nc + ni,
                             hidden_size=nh,
@@ -259,13 +261,18 @@ class SgivenC(nn.Module):
         return m.log_prob(s)
 
     def get_log_prob_total(self, s, c):
-        mean_s, logvar_s = self.forward(c)
+        mean_s, logvar_s = self.forward(c) # NxD
         batch_size = mean_s.size(0)
-        loss = 0
-        for i in range(batch_size):
-            loss += self.get_log_prob_single(s[i], mean_s[i], logvar_s[i])
+        cov_s = torch.diag_embed(logvar_s.exp()) # NxDxD
+        m = MultivariateNormal(mean_s, cov_s)
 
-        return loss/batch_size
+        kernel = m.log_prob(s.unsqueeze(1))
+
+        return kernel.trace() / batch_size
+        # loss = 0
+        # for i in range(batch_size):
+        #     loss += self.get_log_prob_single(s[i], mean_s[i], logvar_s[i])
+        # return loss/batch_size
 
     def get_s_c_mi(self, s, c):
         n_sample_c, batch_size_c, nc = c.size()
@@ -274,14 +281,26 @@ class SgivenC(nn.Module):
         c = c.view(batch_size_c * n_sample_c, nc)
         s = s.view(batch_size_s * n_sample_s, ns)
 
-        mean_s, logvar_s = self.forward(c)
+        mean_s, logvar_s = self.forward(c) # NxD
         batch_size = mean_s.size(0)
-        loss = 0
-        for i in range(batch_size):
-            j = torch.randint(low=0, high=batch_size, size=(1,))[0]
-            loss += self.get_log_prob_single(s[i], mean_s[i], logvar_s[i]) - self.get_log_prob_single(s[i], mean_s[j], logvar_s[j])
+        cov_s = torch.diag_embed(logvar_s.exp()) # NxDxD
+        m = MultivariateNormal(mean_s, cov_s)
+        kernel = m.log_prob(s.unsqueeze(1))
 
-        return loss/batch_size
+        rand_idx = torch.randint(batch_size, (batch_size,))
+        mask_tensor = torch.zeros_like(kernel)
+        mask_tensor[torch.arange(batch_size), rand_idx] = -1
+
+        masked_kernel = torch.mul(kernel, mask_tensor)
+
+        return masked_kernel.sum() / batch_size
+
+        # loss = 0
+        # for i in range(batch_size):
+        #     j = torch.randint(low=0, high=batch_size, size=(1,))[0]
+        #     loss += self.get_log_prob_single(s[i], mean_s[i], logvar_s[i]) - self.get_log_prob_single(s[i], mean_s[j], logvar_s[j])
+
+        # return loss/batch_size
 
 class LSTMDecoder(nn.Module):
     def __init__(self, ni, nc, ns, nh, vocab, model_init, emb_init, device, dropout_in=0, dropout_out=0):
@@ -297,7 +316,7 @@ class LSTMDecoder(nn.Module):
         self.pred_linear = nn.Linear(nh, len(vocab), bias=False)
         self.trans_linear = nn.Linear(ns + nc, nh, bias=False)
 
-        self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1)
+        self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float))
 
         self.dropout_in = nn.Dropout(dropout_in)
         self.dropout_out = nn.Dropout(dropout_out)
@@ -356,7 +375,7 @@ class LSTMDecoder(nn.Module):
         batch_size = z.size(0)
         decoded_batch = [[] for _ in range(batch_size)]
 
-        c_init = self.trans_linear(z).unsqueeze(0)
+        c_init = self.trans_linear(z).unsqueeze(0).repeat(2, 1, 1)
         h_init = torch.tanh(c_init)
         decoder_hidden = (h_init, c_init)
         decoder_input = torch.tensor([self.vocab["<s>"]] * batch_size, dtype=torch.long,

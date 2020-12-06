@@ -16,8 +16,8 @@ CONFIG["yelp"] = {
     "ref1": "yelp_all_model_prediction_ref1.csv",
     "label": True,
     "params": {
-        "log_interval": 10,
-        "num_epochs": 100,
+        "log_interval": 1000,
+        "num_epochs": 30,
         "warm_up": 10,
         "kl_start": 0.1,
         "beta1": 0.35,
@@ -33,8 +33,8 @@ CONFIG["yelp"] = {
             "n_attention_heads": 4,
             "enc_nh": 1024,
             "dec_nh": 1024,
-            "dec_dropout_in": 0,
-            "dec_dropout_out": 0,
+            "dec_dropout_in": 0.5,
+            "dec_dropout_out": 0.5,
             "num_styles": 1,
         },
         "lr_params": {

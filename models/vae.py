@@ -17,7 +17,7 @@ class VAE(nn.Module):
         model_init = uniform_initializer(0.01)
         enc_embed_init = uniform_initializer(0.1)
         dec_embed_init = uniform_initializer(0.1)
-        self.encoder = LSTMEncoder(ni, enc_nh, nc, ns, n_attention_heads, len(vocab), model_init, enc_embed_init)
+        self.encoder = LSTMEncoder(ni, enc_nh, nc, ns, n_attention_heads, vocab, device, model_init, enc_embed_init)
         self.decoder = LSTMDecoder(ni, nc, ns, dec_nh, vocab,
                                    model_init, dec_embed_init, device, dec_dropout_in, dec_dropout_out)
         self.s_given_c = SgivenC(nc, ns, model_init)
@@ -46,6 +46,10 @@ class VAE(nn.Module):
     def calc_mi_q(self, x):
         assert False
         return self.encoder.calc_mi(x)
+    
+    def set_s_given_c_state(self, freeze):
+        for p in self.s_given_c.parameters():
+            p.requires_grad = freeze
 
 
 class TrainerVAE:
@@ -70,7 +74,7 @@ class TrainerVAE:
         self.warm_up = warm_up
         self.kl_weight = kl_start
         self.num_epochs = num_epochs
-        self.opt_dict = {"not_improved": 0, "lr": 1., "best_loss": 1e4}
+        self.opt_dict = {"not_improved": 0, "lr": lr_params['enc_lr'], "best_loss": 1e4}
 
         self.vae = VAE(**vae_params)
         if self.use_cuda:
@@ -86,6 +90,7 @@ class TrainerVAE:
 
         self.nbatch = len(self.train_data)
         self.anneal_rate = (1.0 - kl_start) / (warm_up * self.nbatch)
+        self.beta_weight = 0
 
     def reset_gradients(self):
         self.enc_optimizer.zero_grad()
@@ -110,20 +115,25 @@ class TrainerVAE:
         c = c.view(batch_size_c * n_sample_c, nc)
         s = s.view(batch_size_s * n_sample_s, ns)
 
+        self.vae.set_s_given_c_state(True)
         self.s_given_c_optimizer.zero_grad()
 
         c = c.detach()
         s = s.detach()
 
-        loss = self.vae.s_given_c.get_log_prob_total(s, c)
+        loss = -self.vae.s_given_c.get_log_prob_total(s, c)
         loss.backward()
         self.s_given_c_optimizer.step()
 
-    def compute_disentangle_loss(self, train_data, train_labels):
-        c_, s_, _ = self.vae.encoder.encode(train_data)
+        return loss.item()
 
-        c = c_.detach()  # TODO: Is this needed!??
-        s = s_.detach()
+    def compute_disentangle_loss(self, train_data, train_labels):
+        c, s, _ = self.vae.encoder.encode(train_data)
+
+        # c = c_.detach()  # TODO: Is this needed!??
+        # s = s_.detach()
+
+        self.vae.set_s_given_c_state(False)
 
         sent_len, batch_size = train_data.size()
         batch_size_y = train_labels.size()[0]
@@ -144,29 +154,33 @@ class TrainerVAE:
         return total_dis_loss
 
     def train(self, epoch):
-        self.vae.train()
+        # self.vae.train()
 
         total_rec_loss = 0
         total_kl_loss = 0
         total_disent_loss = 0
+        total_s_given_c_loss = 0
         start_time = time.time()
         step = 0
         num_words = 0
         num_sents = 0
 
+        self.beta_weight += 0.1
+        self.beta_weight = min(1.0, self.beta_weight)
+
         for idx in np.random.permutation(range(self.nbatch)):
+            self.vae.train()
             batch_data = self.train_data[idx]
-            batch_labels = torch.tensor(self.train_labels[idx])
+            batch_labels = self.train_labels[idx]
             sent_len, batch_size = batch_data.size()
 
             target = batch_data[1:]
             num_words += (sent_len - 1) * batch_size
             num_sents += batch_size
             self.kl_weight = min(1.0, self.kl_weight + self.anneal_rate)
-            self.kl_weight = 0.35
 
             self.reset_gradients()
-            self.train_s_given_c(batch_data)
+            total_s_given_c_loss += self.train_s_given_c(batch_data)
 
             vae_logits, vae_kl = self.vae.loss(batch_data)
             vae_logits = vae_logits.view(-1, vae_logits.size(2))
@@ -178,7 +192,7 @@ class TrainerVAE:
             total_rec_loss += vae_rec_loss.sum().item()
             total_kl_loss += vae_kl.sum().item()
             total_disent_loss += disent_loss.item()
-            loss = vae_loss + disent_loss
+            loss = vae_loss + self.beta_weight * disent_loss
 
             loss.backward()
 
@@ -186,31 +200,30 @@ class TrainerVAE:
 
             self.step_gradients()
 
-            # if content_rec_loss.item() <= 0:
-            #     print("content_rec_loss ----------- Negative")
-            # if style_pred_loss.item() <= 0:
-            #     print("style_pred_loss ------------ Negative")
-            # if s_c_mi_loss.item() <= 0:
-            #     print("s_c_mi_loss     ------------ Negative")
-
             if step % self.log_interval == 0 and step > 0:
                 cur_rec_loss = total_rec_loss / num_sents
                 cur_kl_loss = total_kl_loss / num_sents
-                cur_disent_loss = total_disent_loss / num_sents
+                cur_disent_loss = total_disent_loss / self.log_interval
+                cur_s_given_c_loss = total_s_given_c_loss / self.log_interval
                 cur_vae_loss = cur_rec_loss + cur_kl_loss
                 cur_total_loss = cur_vae_loss + cur_disent_loss
                 elapsed = time.time() - start_time
                 self.logging(
-                    '| epoch {:2d} | {:5d}/{:5d} batches | {:5.2f} ms/batch | loss {:3.2f} | vae_loss {:3.2f} | disent_loss {:3.2f} | '
-                    'recon {:3.2f} | kl {:3.2f}'.format(
-                        epoch, step, self.nbatch, elapsed * 1000 / self.log_interval, cur_total_loss, cur_vae_loss, cur_disent_loss,
-                        cur_rec_loss, cur_kl_loss))
+                    '| epoch {:2d} | {:5d}/{:5d} batches | {:5.2f} sec / batch | loss {:3.2f} | vae_loss {:3.2f} | disent_loss {:3.2f} | '
+                    'recon {:3.2f} | kl {:3.2f} | s_given_c_loss {:3.2f}'.format(
+                        epoch, step, self.nbatch, elapsed / self.log_interval, cur_total_loss, cur_vae_loss, cur_disent_loss,
+                        cur_rec_loss, cur_kl_loss, cur_s_given_c_loss))
                 total_rec_loss = 0
                 total_kl_loss = 0
                 total_disent_loss = 0
+                total_s_given_c_loss = 0
                 num_sents = 0
                 num_words = 0
                 start_time = time.time()
+
+                val_losses = self.evaluate()
+                self.logging('| Validation DEBUG!!: total_loss {:3.2f} | recon {:3.2f} | kl {:3.2f} | dient {:3.2f}'.format(
+                val_losses[0]+val_losses[3], val_losses[1], val_losses[2], val_losses[3]))
             step += 1
 
     def evaluate(self):
@@ -226,7 +239,7 @@ class TrainerVAE:
             for idx, batch_data in enumerate(self.valid_data):
                 sent_len, batch_size = batch_data.size()
                 target = batch_data[1:]
-                batch_labels = torch.tensor(self.valid_labels[idx])
+                batch_labels = self.valid_labels[idx]
 
                 num_sents += batch_size
                 num_words += (sent_len - 1) * batch_size
@@ -252,39 +265,43 @@ class TrainerVAE:
         for epoch in range(1, self.num_epochs + 1):
             epoch_start_time = time.time()
             self.train(epoch)
-            # val_losses = self.evaluate()
+            val_losses = self.evaluate()
     
-            # vae_loss = val_losses[0] + val_losses[3]
+            total_loss = val_losses[0] + val_losses[3]
     
-            # if vae_loss < best_loss:
+            self.save(self.save_path)
+            # if total_loss < best_loss:
             #     self.save(self.save_path)
-            #     best_loss = vae_loss
+            #     best_loss = total_loss
             
 
-            # if vae_loss > self.opt_dict["best_loss"]:
-            #     self.opt_dict["not_improved"] += 1
-            #     if self.opt_dict["not_improved"] >= 3 and epoch >= 15:
-            #         self.opt_dict["not_improved"] = 0
-            #         self.opt_dict["lr"] = self.opt_dict["lr"] * 0.5
-            #         self.load(self.save_path)
-            #         decay_cnt += 1
-            #         self.enc_optimizer = optim.SGD(
-            #             self.vae.encoder.parameters(), lr=self.opt_dict["lr"])
-            #         self.dec_optimizer = optim.SGD(
-            #             self.vae.decoder.parameters(), lr=self.opt_dict["lr"])
-            # else:
-            #     self.opt_dict["not_improved"] = 0
-            #     self.opt_dict["best_loss"] = vae_loss
-            # if decay_cnt == 5:
-            #     break
+            if total_loss > self.opt_dict["best_loss"]:
+                self.opt_dict["not_improved"] += 1
+                if self.opt_dict["not_improved"] >= 5 and epoch >= 10:
+                    self.opt_dict["not_improved"] = 0
+                    self.opt_dict["lr"] = self.opt_dict["lr"] * 0.5
+                    self.load(self.save_path)
+                    decay_cnt += 1
+                    self.enc_optimizer = optim.Adam(self.vae.encoder.parameters(), lr=self.opt_dict["lr"])
+                    self.dec_optimizer = optim.Adam(self.vae.decoder.parameters(), lr=self.opt_dict["lr"])
+                    self.s_given_c_optimizer = optim.Adam(self.vae.s_given_c.parameters(), lr=self.opt_dict["lr"])
+                    self.content_decoder_optimizer = optim.Adam(self.vae.content_decoder.parameters(),
+                                                                lr=self.opt_dict["lr"])
+                    self.style_classifier_optimizer = optim.Adam(self.vae.style_classifier.parameters(),
+                                                                lr=self.opt_dict["lr"])
+            else:
+                self.opt_dict["not_improved"] = 0
+                self.opt_dict["best_loss"] = total_loss
+            if decay_cnt == 3:
+                break
 
             self.logging('-' * 75)
-            # self.logging('| end of epoch {:2d} | time {:5.2f}s | '
-            #              'kl_weight {:.2f} | vae_lr {:.2f} | loss {:3.2f}'.format(
-            #                  epoch, (time.time() - epoch_start_time),
-            #                  self.kl_weight, self.opt_dict["lr"], val_losses[0]))
-            self.logging('| total_loss {:3.2f} | recon {:3.2f} | kl {:3.2f} | dient {:3.2f}'.format(
-                val_losses[0], val_losses[1], val_losses[2], val_losses[3]))
+            self.logging('| end of epoch {:2d} | time {:5.2f}s | '
+                         'kl_weight {:.2f} | beta_weight {:.2f} | lr {:.7f}'.format(
+                             epoch, (time.time() - epoch_start_time),
+                             self.kl_weight, self.beta_weight, self.opt_dict["lr"]))
+            self.logging('| Validation: total_loss {:3.2f} | recon {:3.2f} | kl {:3.2f} | dient {:3.2f}'.format(
+                val_losses[0]+val_losses[3], val_losses[1], val_losses[2], val_losses[3]))
             self.logging('-' * 75)
         
         return best_loss
@@ -297,3 +314,54 @@ class TrainerVAE:
     def load(self, path):
         model_path = os.path.join(path, "model.pt")
         self.vae.load_state_dict(torch.load(model_path))
+
+class EvaluateVAE:
+    def __init__(self, test, test_labels, load_path, vocab, vae_params):
+        super(EvaluateVAE, self).__init__()
+
+        self.use_cuda = torch.cuda.is_available()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.load_path = load_path
+
+        self.vocab = vocab
+        self.test_data = test
+        self.test_labels = test_labels
+
+        self.vae = VAE(**vae_params)
+        if self.use_cuda:
+            self.vae.cuda()
+
+        self.nbatch = len(self.test_data)
+        self.batch_size = len(self.test_data[0])
+        self.load(self.load_path)
+    
+    def load(self, path):
+        model_path = os.path.join(path, "model.pt")
+        self.vae.load_state_dict(torch.load(model_path))
+    
+    def eval_style_transfer(self):
+        sent_idx = 0
+        for i in range(2,3):
+            print("Sizes:", self.test_data[i].size(), self.test_data[i].size())
+            print("Sizes_Sliced:", self.test_data[i][:, sent_idx:sent_idx+1].size(), self.test_data[i][:, sent_idx+1:sent_idx+2].size())
+
+            original_sentence_11 = ""
+            original_sentence_22 = ""
+
+            for j in range(self.test_data[i].size()[0]):
+                original_sentence_11 += self.vocab.id2word(self.test_data[i][j, sent_idx:sent_idx+1]) + " "
+                original_sentence_22 += self.vocab.id2word(self.test_data[i][j, sent_idx+1:sent_idx+2]) + " "
+
+            print("11 original_sentence:", original_sentence_11)
+            print("22 original_sentence:", original_sentence_22)
+            c1, s1, _ = self.vae.encode(self.test_data[i][:, sent_idx:sent_idx+1])
+            c2, s2, _ = self.vae.encode(self.test_data[i][:, sent_idx+1:sent_idx+2])
+
+            transfer_sentence_12 = self.vae.decoder.decode(c1, s2)
+            transfer_sentence_21 = self.vae.decoder.decode(c2, s1)
+            transfer_sentence_11 = self.vae.decoder.decode(c1, s1)
+            transfer_sentence_22 = self.vae.decoder.decode(c2, s2)
+            print("11 sentence:", " ".join(transfer_sentence_11[0][:-1]))
+            print("22 sentence:", " ".join(transfer_sentence_22[0][:-1]))
+            print("12 sentence:", " ".join(transfer_sentence_12[0][:-1]))
+            print("21 sentence:", " ".join(transfer_sentence_21[0][:-1]))

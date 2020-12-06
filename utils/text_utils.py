@@ -7,7 +7,8 @@
 
 import torch
 import numpy as np
-
+import random 
+import time 
 from collections import defaultdict, OrderedDict
 
 class VocabEntry(object):
@@ -126,6 +127,10 @@ class MonoTextData(object):
         data = data0 + data1
         labels = labels0 + labels1
 
+        combined_zip = list(zip(sents, data, labels))
+        random.shuffle(combined_zip)
+        sents, data, labels = zip(*combined_zip)
+
         if isinstance(vocab, int):
             vocab = VocabEntry(vocab)
             vocab.build(sents)
@@ -214,6 +219,25 @@ class MonoTextData(object):
 
         return sents_ts, [length + 1 for length in sents_len]
 
+    # def _to_tensor_glove(self, batch_data, batch_first, device, min_len=0):
+    #     batch_data = [sent + [self.vocab.glove_embed[self.vocab.word2id['</s>']]] for sent in batch_data]
+    #     sents_len = [len(sent) for sent in batch_data]
+    #     max_len = max(sents_len)
+    #     max_len = max(min_len, max_len)
+    #     batch_size = len(sents_len)
+    #     sents_new = []
+    #     sents_new.append([self.vocab.glove_embed[self.vocab.word2id['</s>']]] * batch_size)
+    #     for i in range(max_len):
+    #         sents_new.append([sent[i] if len(sent) > i else self.vocab.glove_embed[self.vocab.word2id['<pad>']]
+    #                           for sent in batch_data])
+    #     sents_ts = torch.tensor(sents_new, dtype=torch.long,
+    #                             requires_grad=False, device=device)
+
+    #     if batch_first:
+    #         sents_ts = sents_ts.permute(1, 0).contiguous()
+
+    #     return sents_ts, [length + 1 for length in sents_len]
+
     def data_iter(self, batch_size, device, batch_first=False, shuffle=True):
         index_arr = np.arange(len(self.data))
         if shuffle:
@@ -251,7 +275,7 @@ class MonoTextData(object):
                 cur = nxt
                 batch_data, sents_len = self._to_tensor(batch_data, batch_first, device, min_len)
                 batch_data_list.append(batch_data)
-                batch_label_list.append(batch_label)
+                batch_label_list.append(torch.tensor(batch_label, device=device, requires_grad=False))
 
                 total += batch_data.size(0)
                 assert sents_len == ([sents_len[0]] * len(sents_len))
