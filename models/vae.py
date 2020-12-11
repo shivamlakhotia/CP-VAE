@@ -81,9 +81,10 @@ class TrainerVAE:
             self.vae.cuda()
 
         self.enc_optimizer = optim.Adam(self.vae.encoder.parameters(), lr=lr_params['enc_lr'])
-        self.dec_optimizer = optim.Adam(self.vae.decoder.parameters(), lr=lr_params['dec_lr'])
+        # self.dec_optimizer = optim.Adam(self.vae.decoder.parameters(), lr=lr_params['dec_lr'])
+        self.dec_optimizer = optim.SGD(self.vae.decoder.parameters(), lr=lr_params['dec_lr'])
         self.s_given_c_optimizer = optim.Adam(self.vae.s_given_c.parameters(), lr=lr_params['s_given_c_lr'])
-        self.content_decoder_optimizer = optim.Adam(self.vae.content_decoder.parameters(),
+        self.content_decoder_optimizer = optim.SGD(self.vae.content_decoder.parameters(),
                                                     lr=lr_params['content_decoder_lr'])
         self.style_classifier_optimizer = optim.Adam(self.vae.style_classifier.parameters(),
                                                      lr=lr_params['style_classifier_lr'])
@@ -127,6 +128,29 @@ class TrainerVAE:
 
         return loss.item()
 
+    def train_s_given_c_distribution(self, batch_data):
+        mu_c, logvar_c, mu_s, logvar_s = self.vae.encoder(batch_data)
+
+        c = self.vae.encoder.reparameterize(mu_c, logvar_c, 1)
+        assert (c.size(0) == 1)
+        
+        n_sample_c, batch_size_c, nc = c.size()
+
+        c = c.view(batch_size_c * n_sample_c, nc)
+
+        c = c.detach()
+        mu_s = mu_s.detach()
+        logvar_s = logvar_s.detach()
+
+        self.vae.set_s_given_c_state(True)
+        self.s_given_c_optimizer.zero_grad()
+
+        loss = self.vae.s_given_c.get_log_prob_total_distribution(mu_s, logvar_s, c)
+        loss.backward()
+        self.s_given_c_optimizer.step()
+
+        return loss.item()
+
     def compute_disentangle_loss(self, train_data, train_labels):
         c, s, _ = self.vae.encoder.encode(train_data)
 
@@ -154,7 +178,7 @@ class TrainerVAE:
         return total_dis_loss
 
     def train(self, epoch):
-        # self.vae.train()
+        self.vae.train()
 
         total_rec_loss = 0
         total_kl_loss = 0
@@ -165,11 +189,11 @@ class TrainerVAE:
         num_words = 0
         num_sents = 0
 
-        self.beta_weight += 0.1
+        self.beta_weight += 0.05
         self.beta_weight = min(1.0, self.beta_weight)
 
         for idx in np.random.permutation(range(self.nbatch)):
-            self.vae.train()
+            # self.vae.train()
             batch_data = self.train_data[idx]
             batch_labels = self.train_labels[idx]
             sent_len, batch_size = batch_data.size()
@@ -177,10 +201,12 @@ class TrainerVAE:
             target = batch_data[1:]
             num_words += (sent_len - 1) * batch_size
             num_sents += batch_size
-            self.kl_weight = min(1.0, self.kl_weight + self.anneal_rate)
+            self.kl_weight = min(1.0, self.kl_weight + 0.2*self.anneal_rate)
+            # self.kl_weight = 0.35
 
             self.reset_gradients()
-            total_s_given_c_loss += self.train_s_given_c(batch_data)
+            # total_s_given_c_loss += self.train_s_given_c(batch_data)
+            total_s_given_c_loss += self.train_s_given_c_distribution(batch_data)
 
             vae_logits, vae_kl = self.vae.loss(batch_data)
             vae_logits = vae_logits.view(-1, vae_logits.size(2))
@@ -193,6 +219,7 @@ class TrainerVAE:
             total_kl_loss += vae_kl.sum().item()
             total_disent_loss += disent_loss.item()
             loss = vae_loss + self.beta_weight * disent_loss
+            # loss = vae_loss
 
             loss.backward()
 
@@ -221,9 +248,9 @@ class TrainerVAE:
                 num_words = 0
                 start_time = time.time()
 
-                val_losses = self.evaluate()
-                self.logging('| Validation DEBUG!!: total_loss {:3.2f} | recon {:3.2f} | kl {:3.2f} | dient {:3.2f}'.format(
-                val_losses[0]+val_losses[3], val_losses[1], val_losses[2], val_losses[3]))
+                # val_losses = self.evaluate()
+                # self.logging('| Validation DEBUG!!: total_loss {:3.2f} | recon {:3.2f} | kl {:3.2f} | dient {:3.2f}'.format(
+                # val_losses[0]+val_losses[3], val_losses[1], val_losses[2], val_losses[3]))
             step += 1
 
     def evaluate(self):
@@ -234,6 +261,7 @@ class TrainerVAE:
         total_disent_loss = 0
         num_sents = 0
         num_words = 0
+        num_batches = 0
 
         with torch.no_grad():
             for idx, batch_data in enumerate(self.valid_data):
@@ -242,6 +270,7 @@ class TrainerVAE:
                 batch_labels = self.valid_labels[idx]
 
                 num_sents += batch_size
+                num_batches += 1
                 num_words += (sent_len - 1) * batch_size
 
                 vae_logits, vae_kl = self.vae.loss(batch_data)
@@ -256,7 +285,7 @@ class TrainerVAE:
         cur_rec_loss = total_rec_loss / num_sents
         cur_kl_loss = total_kl_loss / num_sents
         cur_vae_loss = cur_rec_loss + cur_kl_loss
-        cur_disent_loss = total_disent_loss / num_sents
+        cur_disent_loss = total_disent_loss / num_batches
         return cur_vae_loss, cur_rec_loss, cur_kl_loss, cur_disent_loss
 
     def fit(self):
@@ -269,10 +298,10 @@ class TrainerVAE:
     
             total_loss = val_losses[0] + val_losses[3]
     
-            self.save(self.save_path)
-            # if total_loss < best_loss:
-            #     self.save(self.save_path)
-            #     best_loss = total_loss
+            # self.save(self.save_path)
+            if total_loss < best_loss:
+                self.save(self.save_path)
+                best_loss = total_loss
             
 
             if total_loss > self.opt_dict["best_loss"]:
@@ -341,7 +370,7 @@ class EvaluateVAE:
     
     def eval_style_transfer(self):
         sent_idx = 0
-        for i in range(2,3):
+        for i in range(800,810):
             print("Sizes:", self.test_data[i].size(), self.test_data[i].size())
             print("Sizes_Sliced:", self.test_data[i][:, sent_idx:sent_idx+1].size(), self.test_data[i][:, sent_idx+1:sent_idx+2].size())
 
@@ -357,10 +386,10 @@ class EvaluateVAE:
             c1, s1, _ = self.vae.encode(self.test_data[i][:, sent_idx:sent_idx+1])
             c2, s2, _ = self.vae.encode(self.test_data[i][:, sent_idx+1:sent_idx+2])
 
-            transfer_sentence_12 = self.vae.decoder.decode(c1, s2)
-            transfer_sentence_21 = self.vae.decoder.decode(c2, s1)
-            transfer_sentence_11 = self.vae.decoder.decode(c1, s1)
-            transfer_sentence_22 = self.vae.decoder.decode(c2, s2)
+            transfer_sentence_12 = self.vae.decoder.beam_search_decode(c1, s2)
+            transfer_sentence_21 = self.vae.decoder.beam_search_decode(c2, s1)
+            transfer_sentence_11 = self.vae.decoder.beam_search_decode(c1, s1)
+            transfer_sentence_22 = self.vae.decoder.beam_search_decode(c2, s2)
             print("11 sentence:", " ".join(transfer_sentence_11[0][:-1]))
             print("22 sentence:", " ".join(transfer_sentence_22[0][:-1]))
             print("12 sentence:", " ".join(transfer_sentence_12[0][:-1]))

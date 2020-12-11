@@ -8,6 +8,18 @@ import numpy as np
 from scipy.stats import ortho_group
 from torch.distributions.multivariate_normal import MultivariateNormal
 
+class BeamSearchNode(object):
+    def __init__(self, hiddenstate, previousNode, wordId, logProb, length):
+        self.h = hiddenstate
+        self.prevNode = previousNode
+        self.wordid = wordId
+        self.logp = logProb
+        self.leng = length
+
+    def eval(self, alpha=1.0):
+        reward = 0
+        return self.logp / float(self.leng - 1 + 1e-6) + alpha * reward
+
 class GaussianEncoderBase(nn.Module):
     def __init__(self):
         super(GaussianEncoderBase, self).__init__()
@@ -88,11 +100,11 @@ class GaussianEncoderBase(nn.Module):
 class LSTMEncoder(GaussianEncoderBase):
     def __init__(self, ni, nh, nc, ns, attention_heads, vocab, device, model_init, emb_init):
         super(LSTMEncoder, self).__init__()
-        self.embed = nn.Embedding(len(vocab), ni).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float))
+        self.embed = nn.Embedding(len(vocab), ni).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float), freeze=False)
 
         self.lstm = nn.LSTM(input_size=ni,
                             hidden_size=nh,
-                            num_layers=1,
+                            num_layers=2,
                             bidirectional=True)
         self.attention_layer = nn.MultiheadAttention(nh, attention_heads)
         self.linear_c = nn.Linear(nh, 2 * nc, bias=False)
@@ -115,8 +127,9 @@ class LSTMEncoder(GaussianEncoderBase):
         outputs, (last_state, last_cell) = self.lstm(word_embed)
         seq_len, bsz, hidden_size = outputs.size()
         hidden_repr = outputs.view(seq_len, bsz, 2, -1).mean(2)
-        outputs, _ = self.attention_layer(hidden_repr, hidden_repr, hidden_repr)
-        hidden_repr = torch.max(outputs, 0)[0]
+        hidden_repr = torch.max(hidden_repr, 0)[0]
+        # outputs, _ = self.attention_layer(hidden_repr, hidden_repr, hidden_repr)
+        # hidden_repr = torch.max(outputs, 0)[0]
 
         mean_c, logvar_c = self.linear_c(hidden_repr).chunk(2, -1)
         mean_s, logvar_s = self.linear_s(hidden_repr).chunk(2, -1)
@@ -141,7 +154,7 @@ class ContentDecoder(nn.Module):
         self.device = device
 
         # self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1)
-        self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float))
+        self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float), freeze=False)
 
         self.lstm = nn.LSTM(input_size=nc + ni,
                             hidden_size=nh,
@@ -274,6 +287,13 @@ class SgivenC(nn.Module):
         #     loss += self.get_log_prob_single(s[i], mean_s[i], logvar_s[i])
         # return loss/batch_size
 
+    def get_log_prob_total_distribution(self, mean_s_original, logvar_s_original, c):
+        mean_s, logvar_s = self.forward(c) # NxD
+        batch_size = mean_s.size(0)
+        loss = nn.MSELoss(reduction='sum')
+        
+        return (loss(mean_s, mean_s_original) + loss(logvar_s.exp(), logvar_s_original.exp())) / batch_size
+
     def get_s_c_mi(self, s, c):
         n_sample_c, batch_size_c, nc = c.size()
         n_sample_s, batch_size_s, ns = s.size()
@@ -290,6 +310,7 @@ class SgivenC(nn.Module):
         rand_idx = torch.randint(batch_size, (batch_size,))
         mask_tensor = torch.zeros_like(kernel)
         mask_tensor[torch.arange(batch_size), rand_idx] = -1
+        mask_tensor[torch.arange(batch_size), torch.arange(batch_size)] += 1
 
         masked_kernel = torch.mul(kernel, mask_tensor)
 
@@ -310,13 +331,13 @@ class LSTMDecoder(nn.Module):
 
         self.lstm = nn.LSTM(input_size=ni + ns + nc,
                             hidden_size=nh,
-                            num_layers=2,
+                            num_layers=1,
                             bidirectional=False)
 
         self.pred_linear = nn.Linear(nh, len(vocab), bias=False)
         self.trans_linear = nn.Linear(ns + nc, nh, bias=False)
 
-        self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float))
+        self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float), freeze=False)
 
         self.dropout_in = nn.Dropout(dropout_in)
         self.dropout_out = nn.Dropout(dropout_out)
@@ -353,7 +374,8 @@ class LSTMDecoder(nn.Module):
 
         concat_c_s = torch.cat((c, s), 1)
 
-        c_init = self.trans_linear(concat_c_s).unsqueeze(0).repeat(2, 1, 1)
+        # c_init = self.trans_linear(concat_c_s).unsqueeze(0).repeat(2, 1, 1)
+        c_init = self.trans_linear(concat_c_s).unsqueeze(0)
         h_init = torch.tanh(c_init)
         output, _ = self.lstm(word_embed, (h_init, c_init))
 
@@ -409,5 +431,97 @@ class LSTMDecoder(nn.Module):
                     decoded_batch[i].append(self.vocab.id2word(select_index[i].item()))
 
             mask = torch.mul((select_index != end_symbol), mask)
+
+        return decoded_batch
+
+    def beam_search_decode(self, z1, z2=None, K=5, max_t=20):
+        decoded_batch = []
+        if z2 is not None:
+            n_sample_c, batch_size_c, nc = z1.size()
+            n_sample_s, batch_size_s, ns = z2.size()
+            z1 = z1.view(n_sample_c * batch_size_c, nc)
+            z2 = z2.view(n_sample_s * batch_size_s, ns)
+            z = torch.cat([z1, z2], -1)
+        else:
+            z = z1
+        batch_size, nz = z.size()
+
+        c_init = self.trans_linear(z).unsqueeze(0)
+        h_init = torch.tanh(c_init)
+
+        for idx in range(batch_size):
+            decoder_input = torch.tensor([[self.vocab["<s>"]]], dtype=torch.long,
+                                         device=self.device)
+            decoder_hidden = (h_init[:, idx, :].unsqueeze(1), c_init[:, idx, :].unsqueeze(1))
+            node = BeamSearchNode(decoder_hidden, None, decoder_input, 0.1, 1)
+            live_hypotheses = [node]
+
+            completed_hypotheses = []
+
+            t = 0
+            while len(completed_hypotheses) < K and t < max_t:
+                t += 1
+
+                decoder_input = torch.cat([node.wordid for node in live_hypotheses], dim=1)
+
+                decoder_hidden_h = torch.cat([node.h[0] for node in live_hypotheses], dim=1)
+                decoder_hidden_c = torch.cat([node.h[1] for node in live_hypotheses], dim=1)
+
+                decoder_hidden = (decoder_hidden_h, decoder_hidden_c)
+
+                word_embed = self.embed(decoder_input)
+                word_embed = torch.cat((word_embed, z[idx].view(1, 1, -1).expand(
+                    1, len(live_hypotheses), nz)), dim=-1)
+
+                output, decoder_hidden = self.lstm(word_embed, decoder_hidden)
+
+                output_logits = self.pred_linear(output)
+                decoder_output = F.log_softmax(output_logits, dim=-1)
+
+                prev_logp = torch.tensor([node.logp for node in live_hypotheses],
+                                         dtype=torch.float, device=self.device)
+                decoder_output = decoder_output + prev_logp.view(1, len(live_hypotheses), 1)
+
+                decoder_output = decoder_output.view(-1)
+
+                log_prob, indexes = torch.topk(decoder_output, K - len(completed_hypotheses))
+
+                live_ids = indexes // len(self.vocab)
+                word_ids = indexes % len(self.vocab)
+
+                live_hypotheses_new = []
+                for live_id, word_id, log_prob_ in zip(live_ids, word_ids, log_prob):
+                    node = BeamSearchNode((
+                        decoder_hidden[0][:, live_id, :].unsqueeze(1),
+                        decoder_hidden[1][:, live_id, :].unsqueeze(1)),
+                        live_hypotheses[live_id], word_id.view(1, 1), log_prob_, t)
+
+                    if word_id.item() == self.vocab["</s>"]:
+                        completed_hypotheses.append(node)
+                    else:
+                        live_hypotheses_new.append(node)
+
+                live_hypotheses = live_hypotheses_new
+
+                if len(completed_hypotheses) == K:
+                    break
+
+            for live in live_hypotheses:
+                completed_hypotheses.append(live)
+
+            utterances = []
+            for n in sorted(completed_hypotheses, key=lambda node: node.logp, reverse=True):
+                utterance = []
+                utterance.append(self.vocab.id2word(n.wordid.item()))
+                while n.prevNode is not None:
+                    n = n.prevNode
+                    utterance.append(self.vocab.id2word(n.wordid.item()))
+
+                utterance = utterance[::-1]
+                utterances.append(utterance)
+
+                break
+
+            decoded_batch.append(utterances[0])
 
         return decoded_batch

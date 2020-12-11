@@ -17,7 +17,7 @@ CONFIG["yelp"] = {
     "label": True,
     "params": {
         "log_interval": 1000,
-        "num_epochs": 30,
+        "num_epochs": 50,
         "warm_up": 10,
         "kl_start": 0.1,
         "beta1": 0.35,
@@ -38,11 +38,11 @@ CONFIG["yelp"] = {
             "num_styles": 1,
         },
         "lr_params": {
-            "enc_lr": 5*1e-5,
-            "dec_lr": 5*1e-5,
-            "s_given_c_lr": 5*1e-5,
-            "content_decoder_lr": 5*1e-5,
-            "style_classifier_lr": 5*1e-5,
+            "enc_lr": 1e-3,
+            "dec_lr": 1.0,
+            "s_given_c_lr": 1e-3,
+            "content_decoder_lr": 1.0,
+            "style_classifier_lr": 1e-3,
         }
     }
 }

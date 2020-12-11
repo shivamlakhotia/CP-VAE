@@ -50,16 +50,17 @@ def main(args):
 
     val_data_pth0 = os.path.join(data_pth, "sentiment.dev.0")
     val_data_pth1 = os.path.join(data_pth, "sentiment.dev.1")
-    val_class = MonoTextData(val_data_pth0, val_data_pth1, glove=True)
+    val_class = MonoTextData(val_data_pth0, val_data_pth1, vocab=vocab, glove=True)
     val_data, val_labels = val_class.create_data_batch_labels(args.bsz, device)
 
     test_data_pth0 = os.path.join(data_pth, "sentiment.test.0")
     test_data_pth1 = os.path.join(data_pth, "sentiment.test.1")
-    test_class = MonoTextData(test_data_pth0, test_data_pth1, glove=True)
+    test_class = MonoTextData(test_data_pth0, test_data_pth1, vocab=vocab, glove=True)
     test_data, test_labels = test_class.create_data_batch_labels(args.bsz, device)
 
     save_path = '{}-{}'.format(args.save, args.data_name)
-    save_path = os.path.join(save_path, time.strftime("%Y%m%d-%H%M%S"))
+    folder_name = time.strftime("%Y%m%d-%H%M%S") + '-' + args.exp_name
+    save_path = os.path.join(save_path, folder_name)
     scripts_to_save = [
         'run.py', 'models/vae.py',
         'models/base_network.py', 'config.py']
@@ -154,6 +155,8 @@ def add_args(parser):
                         help='test data path')
     parser.add_argument('--save', type=str, default='checkpoint/ours',
                         help='directory name to save')
+    parser.add_argument('--exp_name', type=str, default='',
+                        help='experiment Name')
     parser.add_argument('--bsz', type=int, default=128,
                         help='batch size for training')
     parser.add_argument('--text_only', default=False, action='store_true',

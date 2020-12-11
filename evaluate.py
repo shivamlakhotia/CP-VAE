@@ -26,7 +26,7 @@ def main(args):
 
     test_data_pth0 = os.path.join(data_pth, "sentiment.test.0")
     test_data_pth1 = os.path.join(data_pth, "sentiment.test.1")
-    test_class = MonoTextData(test_data_pth0, test_data_pth1, glove=True)
+    test_class = MonoTextData(test_data_pth0, test_data_pth1, vocab=vocab, glove=True)
     test_data, test_labels = test_class.create_data_batch_labels(args.bsz, device)
 
     params = conf["params"]
