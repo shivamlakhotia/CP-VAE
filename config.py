@@ -1,4 +1,4 @@
-# Copyright (c) 2020-present, Royal Bank of Canada.
+#: Copyright (c) 2020-present, Royal Bank of Canada.
 # All rights reserved.
 #
 # This source code is licensed under the license found in the
@@ -12,8 +12,8 @@ DATA_DIR = "%s/data" % ROOT_DIR
 # ------------------------- DATA -----------------------------
 CONFIG = {}
 CONFIG["yelp"] = {
-    "ref0": "yelp_all_model_prediction_ref0.csv",
-    "ref1": "yelp_all_model_prediction_ref1.csv",
+#    "ref0": "yelp_all_model_prediction_ref0.csv",
+#    "ref1": "yelp_all_model_prediction_ref1.csv",
     "label": True,
     "params": {
         "log_interval": 2000,

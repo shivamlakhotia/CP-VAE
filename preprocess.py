@@ -1,4 +1,4 @@
-# Copyright (c) 2020-present, Royal Bank of Canada.
+# Copyright (c) 2021-present, Royal Bank of Canada.
 # All rights reserved.
 #
 # This source code is licensed under the license found in the
@@ -79,24 +79,55 @@ def flip_files(pth, outpth, with_label=True):
 def main(args):
     data_pth = "data/%s" % args.data_name
     res_pth = "results/%s" % args.data_name
-    for split in ["train", "dev", "test"]:
+    for split in ["train","dev","test"]:
         pth0 = "sentiment.%s.0" % split
         pth1 = "sentiment.%s.1" % split
-        outpth = "%s_data.txt" % split
-        _outpth = "_%s_data.txt" % split
+
+        #Add tense data input files
+        pth2 = "tense.%s.0" % split
+        pth3 = "tense.%s.1" % split
+
+        #Modify separated output files for sentiment and text data
+        outpth0 = "%s_sentiment_data.txt" % split
+        _outpth0 = "_%s_sentiment_data.txt" % split
+        outpth1 = "%s_tense_data.txt" % split
+        _outpth1 = "_%s_tense_data.txt" % split
+
         pth0 = os.path.join(data_pth, pth0)
         pth1 = os.path.join(data_pth, pth1)
-        outpth = os.path.join(data_pth, outpth)
-        _outpth = os.path.join(data_pth, _outpth)
-        concat_files(pth0, pth1, outpth)
-        concat_files(pth0, pth1, _outpth, False)
 
-        fin = _outpth
-        fout = os.path.join(data_pth, "%s_glove.npy" % split)
+  
+        #Add tense output paths
+        pth2 = os.path.join(data_pth, pth2)
+        pth3 = os.path.join(data_pth, pth3)
+
+        outpth0 = os.path.join(data_pth, outpth0)
+        _outpth0 = os.path.join(data_pth, _outpth0)
+        outpth1 = os.path.join(data_pth, outpth1)
+        _outpth1 = os.path.join(data_pth, _outpth1)
+
+        #Creates sentiment output data (labelled)
+        concat_files(pth0, pth1, outpth0)
+        concat_files(pth0, pth1, _outpth0, False)
+
+        #Creates tense output data (labelled)
+        concat_files(pth2, pth3, outpth1)
+        concat_files(pth2, pth3, _outpth1, False)
+
+        #Get glove embeddings for sentiment data
+        fin = _outpth0
+        fout = os.path.join(data_pth, "%s_sentiment_glove.npy" % split)
         get_glove_embeds(fin, fout)
+
+         #Get glove embeddings for tense data
+        fin = _outpth1
+        fout = os.path.join(data_pth, "%s_tense_glove.npy" % split)
+        get_glove_embeds(fin, fout)
+
 
     conf = config.CONFIG[args.data_name]
     if "ref0" in conf:
+        print("ALERT: We are using the extra mappings related stuff in preprocess.py!!!")
         ref_pth0 = conf["ref0"]
         ref_pth1 = conf["ref1"]
         ref_pth0 = os.path.join(res_pth, ref_pth0)
@@ -114,21 +145,7 @@ def main(args):
             "BERT_DEL": "B-GST",
             "HUMAN": "HUMAN",
             "Source": "SOURCE"
-        }
-
-        for model in ["CROSSALIGNED", "STYLEEMBEDDING", "MULTIDECODER", "DELETEONLY",
-                      "DELETEANDRETRIEVE", "BERT_RET_TFIDF", "BERT_DEL", "HUMAN", "Source"]:
-            name = mappings[model]
-            sent0 = df0[model].tolist()
-            sent1 = df1[model].tolist()
-            outpth = os.path.join(res_pth, name + ".txt")
-            with open(outpth, "w") as f_out:
-                for x in sent0:
-                    f_out.write("1\t%s\n" % str(x).strip().lower())
-                for x in sent1:
-                    f_out.write("0\t%s\n" % str(x).strip().lower())
-
-
+                                                                                                                                                                              141,14        79%
 def add_args(parser):
     parser.add_argument('--data_name', type=str, default='yelp')
 
@@ -139,3 +156,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args)
+                                                                                                                                                                            93,14         40%
+                                                                                                                                                   1,14          Top
