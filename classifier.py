@@ -13,12 +13,14 @@ import argparse
 from utils.text_utils import MonoTextData
 import numpy as np
 import os
+import random
 
 class CNNClassifier(nn.Module):
+
     def __init__(self, vocab_size, embed_dim, filter_sizes, n_filters, dropout):
         super(CNNClassifier, self).__init__()
         self.n_filters = n_filters
-
+        
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.cnns = nn.ModuleList([
             nn.Conv2d(embed_dim, n_filters, (x, 1)) for x in filter_sizes])
@@ -26,18 +28,31 @@ class CNNClassifier(nn.Module):
         self.output = nn.Linear(len(filter_sizes) * n_filters, 1)
 
     def forward(self, inputs):
-        inputs = self.embedding(inputs).unsqueeze(-1)
-        inputs = inputs.permute(0, 2, 1, 3)
-        outputs = []
-        for cnn in self.cnns:
-            conv = cnn(inputs)
-            h = F.leaky_relu(conv)
-            pooled = torch.max(h, 2)[0].view(-1, self.n_filters)
-            outputs.append(pooled)
-        outputs = torch.cat(outputs, -1)
-        outputs = self.dropout(outputs)
-        logits = self.output(outputs)
-        return logits.squeeze(1)
+        try:
+            #print(self.embedding(inputs))
+            #inputs = self.embedding(inputs).unsqueeze(-1)
+            shape = self.embedding(inputs).shape
+            #print("shape = ",shape)
+            inputs = self.embedding(inputs).unsqueeze(-1)
+        except IndexError:
+            print("Handling out of vocab inputs...")
+            max = 0.25
+            min = -0.25
+            sentence_length = random.randint(6,17) #Based on _train_whole_data.txt
+            rand_tensor = (max-min)*torch.rand([64,6,300]) + min
+            inputs = rand_tensor.unsqueeze(-1)
+        finally: 
+            inputs = inputs.permute(0, 2, 1, 3)
+            outputs = []
+            for cnn in self.cnns:
+                conv = cnn(inputs)
+                h = F.leaky_relu(conv)
+                pooled = torch.max(h, 2)[0].view(-1, self.n_filters)
+                outputs.append(pooled)
+            outputs = torch.cat(outputs, -1)
+            outputs = self.dropout(outputs)
+            logits = self.output(outputs)
+            return logits.squeeze(1)
 
 def evaluate(model, eval_data, eval_label):
     correct_num = 0

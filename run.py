@@ -93,43 +93,43 @@ def main(args):
         feat_tense = train_tense_feat
 
     #VAE training on sentiment data
-    kwargs0 = {
-        "train": train_sentiment,
-        "valid": dev_sentiment,
-        "test": test_sentiment,
-        "feat": feat_sentiment,
-        "bsz": args.bsz,
-        "save_path": save_path0,
-        "logging": logging0,
-        "text_only": args.text_only,
-    }
-    params = conf["params"]
-    params["vae_params"]["vocab"] = sentiment_vocab
-    params["vae_params"]["device"] = device
-    params["vae_params"]["text_only"] = args.text_only
-    params["vae_params"]["mlp_ni"] = train_sentiment_feat.shape[1]
-    kwargs0 = dict(kwargs0, **params)
+    # kwargs0 = {
+    #     "train": train_sentiment,
+    #     "valid": dev_sentiment,
+    #     "test": test_sentiment,
+    #     "feat": feat_sentiment,
+    #     "bsz": args.bsz,
+    #     "save_path": save_path0,
+    #     "logging": logging0,
+    #     "text_only": args.text_only,
+    # }
+    # params = conf["params"]
+    # params["vae_params"]["vocab"] = sentiment_vocab
+    # params["vae_params"]["device"] = device
+    # params["vae_params"]["text_only"] = args.text_only
+    # params["vae_params"]["mlp_ni"] = train_sentiment_feat.shape[1]
+    # kwargs0 = dict(kwargs0, **params)
 
-    sentiment_model = DecomposedVAE(**kwargs0)
-    try:
-        valid_loss = sentiment_model.fit()
-        logging("sentiment val loss : {}".format(valid_loss))
-    except KeyboardInterrupt:
-        logging("Exiting from training early")
+    # sentiment_model = DecomposedVAE(**kwargs0)
+    # try:
+    #     valid_loss = sentiment_model.fit()
+    #     logging("sentiment val loss : {}".format(valid_loss))
+    # except KeyboardInterrupt:
+    #     logging("Exiting from training early")
 
-    sentiment_model.load(save_path0)
-    test_loss = model.evaluate(sentiment_model.test_data, sentiment_model.test_feat)
-    logging("sentiment test loss: {}".format(test_loss[0]))
-    logging("sentiment test recon: {}".format(test_loss[1]))
-    logging("sentiment test kl1: {}".format(test_loss[2]))
-    logging("sentiment test kl2: {}".format(test_loss[3]))
-    logging("sentiment test mi1: {}".format(test_loss[4]))
-    logging("sentiment test mi2: {}".format(test_loss[5]))
+    # sentiment_model.load(save_path0)
+    # test_loss = model.evaluate(sentiment_model.test_data, sentiment_model.test_feat)
+    # logging("sentiment test loss: {}".format(test_loss[0]))
+    # logging("sentiment test recon: {}".format(test_loss[1]))
+    # logging("sentiment test kl1: {}".format(test_loss[2]))
+    # logging("sentiment test kl2: {}".format(test_loss[3]))
+    # logging("sentiment test mi1: {}".format(test_loss[4]))
+    # logging("sentiment test mi2: {}".format(test_loss[5]))
 
     #VAE training on tense data
     kwargs1 = {
         "train": train_tense,
-        "valid": dev_tense,
+        "valid": test_tense,
         "test": test_tense,
         "feat": feat_tense,
         "bsz": args.bsz,

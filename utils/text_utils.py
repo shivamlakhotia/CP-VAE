@@ -186,7 +186,7 @@ class MonoTextData(object):
 
         return batch_data_list, batch_label_list
 
-    def create_data_batch(self, batch_size, device, batch_first=False):
+    def create_data_batch(self, batch_size, device, batch_first=False, min_len=5):
         sents_len = np.array([len(sent) for sent in self.data])
         sort_idx = np.argsort(sents_len)
         sort_len = sents_len[sort_idx]
@@ -207,7 +207,7 @@ class MonoTextData(object):
                 for id_ in range(cur, nxt):
                     batch_data.append(self.data[sort_idx[id_]])
                 cur = nxt
-                batch_data, sents_len = self._to_tensor(batch_data, batch_first, device)
+                batch_data, sents_len = self._to_tensor(batch_data, batch_first, device, min_len)
                 batch_data_list.append(batch_data)
 
                 total += batch_data.size(0)
