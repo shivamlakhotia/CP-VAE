@@ -28,19 +28,22 @@ class GaussianEncoderBase(nn.Module):
         raise NotImplementedError
 
     def sample(self, inputs, nsamples):
-        mu_c, logvar_c, mu_s, logvar_s = self.forward(inputs)
+        mu_c, logvar_c, mu_s1, logvar_s1, mu_s2, logvar_s2 = self.forward(inputs)
         c = self.reparameterize(mu_c, logvar_c, nsamples)
-        s = self.reparameterize(mu_s, logvar_s, nsamples)
-        return c, s, (mu_c, logvar_c), (mu_s, logvar_s)
+        s1 = self.reparameterize(mu_s1, logvar_s1, nsamples)
+        s2 = self.reparameterize(mu_s2, logvar_s2, nsamples)
+        return c, s1, s2, (mu_c, logvar_c), (mu_s1, logvar_s1), (mu_s2, logvar_s2)
 
     def encode(self, inputs, nsamples=1):
-        mu_c, logvar_c, mu_s, logvar_s = self.forward(inputs)
+        mu_c, logvar_c, mu_s1, logvar_s1, mu_s2, logvar_s2 = self.forward(inputs)
         c = self.reparameterize(mu_c, logvar_c, nsamples)
-        s = self.reparameterize(mu_s, logvar_s, nsamples)
+        s1 = self.reparameterize(mu_s1, logvar_s1, nsamples)
+        s2 = self.reparameterize(mu_s2, logvar_s2, nsamples)
 
-        KL = 0.5 * (mu_c.pow(2) + logvar_c.exp() - logvar_c - 1).sum(1) + 0.5 * (
-                    mu_s.pow(2) + logvar_s.exp() - logvar_s - 1).sum(1)
-        return c, s, KL
+        KL = 0.5 * (mu_c.pow(2) + logvar_c.exp() - logvar_c - 1).sum(1) + \
+                0.5 * (mu_s1.pow(2) + logvar_s1.exp() - logvar_s1 - 1).sum(1) + \
+                0.5 * (mu_s2.pow(2) + logvar_s2.exp() - logvar_s2 - 1).sum(1)
+        return c, s1, s2, KL
 
     def reparameterize(self, mu, logvar, nsamples=1):
         batch_size, nz = mu.size()
@@ -76,6 +79,7 @@ class GaussianEncoderBase(nn.Module):
         return log_density.squeeze(0)
 
     def calc_mi(self, x):
+        assert False
         mu, logvar = self.forward(x)
 
         x_batch, nz = mu.size()
@@ -108,7 +112,8 @@ class LSTMEncoder(GaussianEncoderBase):
                             bidirectional=True)
         self.attention_layer = nn.MultiheadAttention(nh, attention_heads)
         self.linear_c = nn.Linear(nh, 2 * nc, bias=False)
-        self.linear_s = nn.Linear(nh, 2 * ns, bias=False)
+        self.linear_s1 = nn.Linear(nh, 2 * ns, bias=False)
+        self.linear_s2 = nn.Linear(nh, 2 * ns, bias=False)
         self.reset_parameters(model_init, emb_init)
 
     def reset_parameters(self, model_init, emb_init):
@@ -132,14 +137,15 @@ class LSTMEncoder(GaussianEncoderBase):
         # hidden_repr = torch.max(outputs, 0)[0]
 
         mean_c, logvar_c = self.linear_c(hidden_repr).chunk(2, -1)
-        mean_s, logvar_s = self.linear_s(hidden_repr).chunk(2, -1)
-        return mean_c, logvar_c, mean_s, logvar_s
+        mean_s1, logvar_s1 = self.linear_s1(hidden_repr).chunk(2, -1)
+        mean_s2, logvar_s2 = self.linear_s2(hidden_repr).chunk(2, -1)
+        return mean_c, logvar_c, mean_s1, logvar_s1, mean_s2, logvar_s2
 
 
 class StyleClassifier(nn.Module):
     def __init__(self, ns, num_labels):
         super(StyleClassifier, self).__init__()
-        self.linear = nn.Linear(ns, 2**num_labels, bias=False)
+        self.linear = nn.Linear(ns, 2, bias=False)
 
     def forward(self, inputs):
         output = self.linear(inputs)
@@ -315,13 +321,20 @@ class SgivenC(nn.Module):
         masked_kernel = torch.mul(kernel, mask_tensor)
 
         return masked_kernel.sum() / batch_size
+    
+    def get_s_c_mi_distribution(self, mean_s_original, logvar_s_original, c):
+        n_sample_c, batch_size_c, nc = c.size()
+        c = c.view(batch_size_c * n_sample_c, nc)
+        
+        mean_s, logvar_s = self.forward(c) # NxD
+        batch_size = mean_s.size(0)
+        loss = nn.MSELoss(reduction='sum')
 
-        # loss = 0
-        # for i in range(batch_size):
-        #     j = torch.randint(low=0, high=batch_size, size=(1,))[0]
-        #     loss += self.get_log_prob_single(s[i], mean_s[i], logvar_s[i]) - self.get_log_prob_single(s[i], mean_s[j], logvar_s[j])
+        random_perm = torch.randperm(batch_size)
+        mean_s_original_perm = mean_s_original[random_perm]
+        logvar_s_original_perm = logvar_s_original[random_perm]
 
-        # return loss/batch_size
+        return ((loss(mean_s, mean_s_original_perm) + loss(logvar_s.exp(), logvar_s_original_perm.exp())) - (loss(mean_s, mean_s_original) + loss(logvar_s.exp(), logvar_s_original.exp()))) / batch_size
 
 class LSTMDecoder(nn.Module):
     def __init__(self, ni, nc, ns, nh, vocab, model_init, emb_init, device, dropout_in=0, dropout_out=0):
@@ -329,13 +342,13 @@ class LSTMDecoder(nn.Module):
         self.vocab = vocab
         self.device = device
 
-        self.lstm = nn.LSTM(input_size=ni + ns + nc,
+        self.lstm = nn.LSTM(input_size=ni + 2*ns + nc,
                             hidden_size=nh,
                             num_layers=1,
                             bidirectional=False)
 
         self.pred_linear = nn.Linear(nh, len(vocab), bias=False)
-        self.trans_linear = nn.Linear(ns + nc, nh, bias=False)
+        self.trans_linear = nn.Linear(2*ns + nc, nh, bias=False)
 
         self.embed = nn.Embedding(len(vocab), ni, padding_idx=-1).from_pretrained(torch.tensor(vocab.glove_embed, device=device, dtype=torch.float), freeze=False)
 
@@ -349,12 +362,13 @@ class LSTMDecoder(nn.Module):
             model_init(param)
         emb_init(self.embed.weight)
 
-    def forward(self, inputs, c, s):
+    def forward(self, inputs, c, s1, s2):
         n_sample_c, batch_size_c, nc = c.size()
-        n_sample_s, batch_size_s, ns = s.size()
+        n_sample_s1, batch_size_s1, ns1 = s1.size()
+        n_sample_s2, batch_size_s2, ns2 = s2.size()
 
-        assert (n_sample_c == n_sample_s)
-        assert (batch_size_c == batch_size_s)
+        assert (n_sample_c == n_sample_s1 and n_sample_c == n_sample_s2)
+        assert (batch_size_c == batch_size_s1 and batch_size_c == batch_size_s2)
 
         seq_len = inputs.size(0)
 
@@ -363,16 +377,18 @@ class LSTMDecoder(nn.Module):
 
         if n_sample_c == 1:
             c_ = c.expand(seq_len, batch_size_c, nc)
-            s_ = s.expand(seq_len, batch_size_s, ns)
+            s1_ = s1.expand(seq_len, batch_size_s1, ns1)
+            s2_ = s2.expand(seq_len, batch_size_s2, ns2)
         else:
             raise NotImplementedError
 
-        word_embed = torch.cat((word_embed, c_, s_), -1)
+        word_embed = torch.cat((word_embed, c_, s1_, s2_), -1)
 
         c = c.view(batch_size_c * n_sample_c, nc)
-        s = s.view(batch_size_s * n_sample_s, ns)
+        s1 = s1.view(batch_size_s1 * n_sample_s1, ns1)
+        s2 = s2.view(batch_size_s2 * n_sample_s2, ns2)
 
-        concat_c_s = torch.cat((c, s), 1)
+        concat_c_s = torch.cat((c, s1, s2), 1)
 
         # c_init = self.trans_linear(concat_c_s).unsqueeze(0).repeat(2, 1, 1)
         c_init = self.trans_linear(concat_c_s).unsqueeze(0)
@@ -384,16 +400,20 @@ class LSTMDecoder(nn.Module):
 
         return output_logits.view(-1, batch_size_c, len(self.vocab))
 
-    def decode(self, c, s, greedy=True):
-        n_sample_c, batch_size_c, nc = c.size()
-        n_sample_s, batch_size_s, ns = s.size()
+    def decode(self, c, s1, s2, greedy=True):
+        assert False 
 
-        assert (n_sample_c == 1 and n_sample_s == 1)
+        n_sample_c, batch_size_c, nc = c.size()
+        n_sample_s1, batch_size_s1, ns1 = s1.size()
+        n_sample_s2, batch_size_s2, ns2 = s2.size()
+
+        assert (n_sample_c == 1 and n_sample_s1 == 1 and n_sample_s2 == 1)
 
         c = c.view(batch_size_c * n_sample_c, nc)
-        s = s.view(batch_size_s * n_sample_s, ns)
+        s1 = s1.view(batch_size_s1 * n_sample_s1, ns1)
+        s2 = s2.view(batch_size_s2 * n_sample_s2, ns2)
 
-        z = torch.cat((c, s), 1)
+        z = torch.cat((c, s1, s2), 1)
         batch_size = z.size(0)
         decoded_batch = [[] for _ in range(batch_size)]
 
@@ -434,14 +454,16 @@ class LSTMDecoder(nn.Module):
 
         return decoded_batch
 
-    def beam_search_decode(self, z1, z2=None, K=5, max_t=20):
+    def beam_search_decode(self, z1, z2=None, z3=None, K=5, max_t=20):
         decoded_batch = []
         if z2 is not None:
             n_sample_c, batch_size_c, nc = z1.size()
-            n_sample_s, batch_size_s, ns = z2.size()
+            n_sample_s1, batch_size_s1, ns1 = z2.size()
+            n_sample_s2, batch_size_s2, ns2 = z3.size()
             z1 = z1.view(n_sample_c * batch_size_c, nc)
-            z2 = z2.view(n_sample_s * batch_size_s, ns)
-            z = torch.cat([z1, z2], -1)
+            z2 = z2.view(n_sample_s1 * batch_size_s1, ns1)
+            z3 = z3.view(n_sample_s2 * batch_size_s2, ns2)
+            z = torch.cat([z1, z2, z3], -1)
         else:
             z = z1
         batch_size, nz = z.size()

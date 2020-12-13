@@ -16,8 +16,8 @@ CONFIG["yelp"] = {
     "ref1": "yelp_all_model_prediction_ref1.csv",
     "label": True,
     "params": {
-        "log_interval": 1000,
-        "num_epochs": 50,
+        "log_interval": 300,
+        "num_epochs": 100,
         "warm_up": 10,
         "kl_start": 0.1,
         "beta1": 0.35,
