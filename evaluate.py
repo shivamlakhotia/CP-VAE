@@ -49,7 +49,7 @@ def add_args(parser):
                         help='test data path')
     parser.add_argument('--load_path', type=str, default='',
                         help='directory name to load')
-    parser.add_argument('--bsz', type=int, default=128,
+    parser.add_argument('--bsz', type=int, default=256,
                         help='batch size for training')
     parser.add_argument('--vocab', type=str, default='./tmp/yelp.vocab')
     parser.add_argument('--embedding', type=str, default='./data/glove.840B.300d.txt')

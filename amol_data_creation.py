@@ -67,7 +67,7 @@ class AmolData:
         df_both_swapped_l2 = []
 
         with torch.no_grad():
-            while total_sent < 100:
+            while total_sent < 1000:
                 total_sent += 1
                 batch_idx = random.randint(0, self.nbatch-1)
                 sent_idx = random.randint(0, self.test_data[batch_idx].size()[1]-1)
@@ -135,21 +135,21 @@ class AmolData:
         df_sentiment_swap_file["Swapped"] = df_sentiment_swapped
         df_sentiment_swap_file["New Sentiment Label"] = df_sentiment_swapped_l1
         df_sentiment_swap_file["New Tense Label"] = df_sentiment_swapped_l2
-        df_sentiment_swap_file.to_csv('data/amol_sentiment_swapped_file.csv', sep='\t')
-
+        df_sentiment_swap_file.to_csv('data/generated_eval_data_1/M1_sentiment_swapped_file.csv', sep='\t')
+  
         df_tense_swap_file = pd.DataFrame()
         df_tense_swap_file["Original"] = df_original
         df_tense_swap_file["Swapped"] = df_tense_swapped
         df_tense_swap_file["New Sentiment Label"] = df_tense_swapped_l1
         df_tense_swap_file["New Tense Label"] = df_tense_swapped_l2
-        df_tense_swap_file.to_csv('data/amol_tense_swapped_file.csv', sep='\t')
+        df_tense_swap_file.to_csv('data/generated_eval_data_1/M1_tense_swapped_file.csv', sep='\t')
 
         df_both_swap_file = pd.DataFrame()
         df_both_swap_file["Original"] = df_original
         df_both_swap_file["Swapped"] = df_both_swapped
         df_both_swap_file["New Sentiment Label"] = df_both_swapped_l1
         df_both_swap_file["New Tense Label"] = df_both_swapped_l2
-        df_both_swap_file.to_csv('data/amol_both_swapped_file.csv', sep='\t')
+        df_both_swap_file.to_csv('data/generated_eval_data_1/M1_both_swapped_file.csv', sep='\t')
 
         # print(df)
 
@@ -168,7 +168,7 @@ def main(args):
     vocab = train_class.vocab
     print('Vocabulary size: %d' % len(vocab))
 
-    test_data_pth = os.path.join(data_pth, "eval_data.csv")
+    test_data_pth = os.path.join(data_pth, "test_identical_sentiment_90_tense.csv")
     test_class = MonoTextData(test_data_pth, vocab=vocab, glove=True)
     test_data, test_sentiments, test_tenses = test_class.create_data_batch_labels(args.bsz, device)
 
@@ -186,7 +186,7 @@ def add_args(parser):
                         help='data name')
     parser.add_argument('--load_path', type=str, default='',
                         help='directory name to load')
-    parser.add_argument('--bsz', type=int, default=128,
+    parser.add_argument('--bsz', type=int, default=256,
                         help='batch size for training')
     parser.add_argument('--vocab', type=str, default='./tmp/yelp.vocab')
     parser.add_argument('--embedding', type=str, default='./data/glove.840B.300d.txt')

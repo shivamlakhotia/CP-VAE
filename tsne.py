@@ -124,7 +124,7 @@ def scatter(x, colors):
     # We create a scatter plot.
     f = plt.figure(figsize=(8, 8))
     ax = plt.subplot(aspect='equal')
-    sc = ax.scatter(x[:,0], x[:,1], lw=0, s=40,
+    sc = ax.scatter(x[:,0], x[:,1], lw=0, s=20,
                     c=palette[colors.astype(np.int)])
     plt.xlim(-25, 25)
     plt.ylim(-25, 25)
@@ -182,6 +182,10 @@ def main(args):
     plt.savefig('data/s1_embeddings', dpi=120)
     scatter(s2_proj, labels2)
     plt.savefig('data/s2_embeddings', dpi=120)
+    scatter(s1_proj, labels2)
+    plt.savefig('data/s1_label2_embeddings', dpi=120)
+    scatter(s2_proj, labels1)
+    plt.savefig('data/s2_label1_embeddings', dpi=120)
     scatter(c_proj, labels)
     plt.savefig('data/c_embeddings', dpi=120)
 
@@ -190,7 +194,7 @@ def add_args(parser):
                         help='data name')
     parser.add_argument('--load_path', type=str, default='',
                         help='directory name to load')
-    parser.add_argument('--bsz', type=int, default=128,
+    parser.add_argument('--bsz', type=int, default=256,
                         help='batch size for training')
     parser.add_argument('--vocab', type=str, default='./tmp/yelp.vocab')
     parser.add_argument('--embedding', type=str, default='./data/glove.840B.300d.txt')

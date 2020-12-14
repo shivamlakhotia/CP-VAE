@@ -49,7 +49,7 @@ def evaluate(model, eval_data, eval_label):
         y_hat = list((probs > 0.5).long().cpu().numpy())
         correct_num += sum([p == q for p, q in zip(batch_label, y_hat)])
         total_sample += batch_size
-    return correct_num / total_sample
+    return float(correct_num) / float(total_sample)
 
 def main(args):
     data_pth = "data/%s" % args.data_name
